@@ -102,6 +102,25 @@ TailwindsPetCare/
     └── utils/                   ← pure utility functions
 ```
 
+
+---
+
+## Service Zones
+
+Travel fee pricing by distance from South Dallas base. Zone 9 is legend-only (no map circle).
+Update `src/features/serviceArea/serviceAreaData.js` when fees change.
+
+| Zone   | Distance       | Travel Fee          |
+|--------|---------------|---------------------|
+| Zone 1 | 0–5 miles     | None                |
+| Zone 2 | 5–10 miles    | +$5                 |
+| Zone 3 | 10–15 miles   | +$10                |
+| Zone 4 | 15–20 miles   | +$12                |
+| Zone 5 | 20–25 miles   | +$15                |
+| Zone 6 | 25–30 miles   | +$17.50             |
+| Zone 7 | 30–35 miles   | +$20                |
+| Zone 8 | 35–40 miles   | +$25                |
+| Zone 9 | 40–100 miles  | Location dependent  |
 ---
 
 ## Infrastructure

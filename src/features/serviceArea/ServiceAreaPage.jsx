@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useLoadGoogleMaps from './useLoadGoogleMaps.js';
@@ -31,12 +31,11 @@ function ZoneLegend() {
       <thead>
         <tr>
           <th style={thStyle}>Zone</th>
-          <th style={thStyle}>Distance from base</th>
           <th style={thStyle}>Travel fee</th>
         </tr>
       </thead>
       <tbody>
-        {PRICING_ZONES.map((zone, i) => (
+        {PRICING_ZONES.map((zone) => (
           <tr key={zone.label}>
             <td style={tdStyle}>
               <span
@@ -52,12 +51,9 @@ function ZoneLegend() {
                 }}
                 aria-hidden='true'
               />
-              Zone {i + 1}
+              {zone.label}
             </td>
-            <td style={tdStyle}>{zone.label}</td>
-            <td style={tdStyle}>
-              {zone.travelFee === 0 ? 'None' : `+$${zone.travelFee}`}
-            </td>
+            <td style={tdStyle}>{zone.feeDisplay}</td>
           </tr>
         ))}
       </tbody>
@@ -69,7 +65,6 @@ function ZoneLegend() {
 
 function ServiceAreaMap({ isLoaded }) {
   const mapDivRef = useRef(null);
-  // Prevent re-initialising the map on re-renders.
   const mapInstanceRef = useRef(null);
 
   useEffect(() => {
@@ -77,7 +72,7 @@ function ServiceAreaMap({ isLoaded }) {
 
     const map = new window.google.maps.Map(mapDivRef.current, {
       center: BASE_COORDS,
-      zoom: 10,
+      zoom: 9,
       mapTypeId: 'roadmap',
       mapTypeControl: false,
       streetViewControl: false,
@@ -85,25 +80,28 @@ function ServiceAreaMap({ isLoaded }) {
     });
     mapInstanceRef.current = map;
 
-    // Draw zone circles outermost-first so inner rings paint on top.
-    [...PRICING_ZONES].reverse().forEach((zone) => {
-      new window.google.maps.Circle({
-        map,
-        center: BASE_COORDS,
-        radius: zone.radiusMiles * MILES_TO_METERS,
-        fillColor: zone.fillColor,
-        fillOpacity: 0.18,
-        strokeColor: zone.strokeColor,
-        strokeOpacity: 0.8,
-        strokeWeight: 2,
+    // Draw only zones with drawOnMap:true, outermost-first so inner rings paint on top.
+    [...PRICING_ZONES]
+      .filter((zone) => zone.drawOnMap)
+      .reverse()
+      .forEach((zone) => {
+        new window.google.maps.Circle({
+          map,
+          center: BASE_COORDS,
+          radius: zone.radiusMiles * MILES_TO_METERS,
+          fillColor: zone.fillColor,
+          fillOpacity: 0.18,
+          strokeColor: zone.strokeColor,
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+        });
       });
-    });
 
-    // Center marker at the business address.
+    // Center marker at the business base.
     new window.google.maps.Marker({
       position: BASE_COORDS,
       map,
-      title: 'Tailwinds Pet Care — 2500 South Blvd, Dallas TX',
+      title: 'Tailwinds Pet Care base location',
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
         scale: 9,
@@ -120,7 +118,7 @@ function ServiceAreaMap({ isLoaded }) {
       ref={mapDivRef}
       style={{
         width: '100%',
-        height: '460px',
+        height: '480px',
         borderRadius: '6px',
         overflow: 'hidden',
         border: `2px solid ${COLORS.lightBlue}`,
@@ -163,8 +161,9 @@ function ServiceAreaPage() {
           maxWidth: '640px',
         }}
       >
-        We serve the greater DFW area within a 20-mile radius of South Dallas.
-        A travel fee applies for visits beyond 5 miles.
+        We serve the greater DFW area within a 40-mile radius of South Dallas.
+        A travel fee applies for visits beyond 5 miles. Zone 9 (40–100 miles)
+        is available by arrangement — contact us for a quote.
       </p>
 
       {hasError && (
@@ -193,7 +192,7 @@ function ServiceAreaPage() {
       {!hasError && !isLoaded && (
         <div
           style={{
-            height: '460px',
+            height: '480px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -221,12 +220,11 @@ function ServiceAreaPage() {
           lineHeight: 1.65,
         }}
       >
-        Travel fees are added to the base service rate. Zone 1 (within 5 miles) has
-        no travel fee.{' '}
+        Travel fees are added to the base service rate. Zone 1 has no travel fee.{' '}
         <a href='/contact' style={{ color: COLORS.blue }}>
           Contact us
         </a>{' '}
-        if you&apos;re unsure whether we serve your address.
+        if you&apos;re unsure which zone your address falls in.
       </p>
     </div>
   );
