@@ -64,7 +64,7 @@ function ZoneLegend() {
 
 // ── ServiceAreaMap ────────────────────────────────────────────────────────────
 
-function ServiceAreaMap({ isLoaded, searchedLocation }) {
+function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
   const mapDivRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const searchMarkerRef = useRef(null);
@@ -180,9 +180,7 @@ ServiceAreaMap.propTypes = {
   }),
 };
 
-ServiceAreaMap.defaultProps = {
-  searchedLocation: null,
-};
+
 
 // ── ServiceAreaPage ───────────────────────────────────────────────────────────
 
