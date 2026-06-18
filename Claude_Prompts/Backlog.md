@@ -1,6 +1,6 @@
-# TailwindsPetCare — Backlog
+﻿# TailwindsPetCare — Backlog
 
-<!-- Last used numbers: Issue#0 · FR#16 · CQ#0 -->
+<!-- Last used numbers: Issue#0 · FR#16 · CQ#1 -->
 
 ## Categories
 
@@ -34,7 +34,7 @@ On new entry: file a GitHub issue immediately. Record GH# and date:
 - [ ] FR#3 (2026-06-18) — Services page: list all service types, descriptions, base pricing
 - [ ] FR#4 (2026-06-18) — About page: company story, owner bio, pets served, target market
 - [ ] FR#5 (2026-06-18) — Contact section: phone, address, inquiry form
-- [ ] FR#6 (2026-06-18) — Service Area map: Google Maps with pricing zones by distance from 2500 South Blvd
+- [x] FR#6 (2026-06-18) — Service Area map: Google Maps with pricing zones by distance from 2500 South Blvd
 - [ ] FR#7 (2026-06-18) — Global nav, footer, responsive layout, brand styling throughout
 - [ ] FR#8 (2026-06-18) — Infrastructure: nginx vhost + DNS A records + Let's Encrypt cert for tailwindspetcare.com
 
@@ -58,8 +58,14 @@ On new entry: file a GitHub issue immediately. Record GH# and date:
 
 <!-- Refactoring and standards work -->
 
+- [ ] CQ#1 (2026-06-18) — Migrate google.maps.Marker to AdvancedMarkerElement in ServiceAreaPage (requires GCP Map ID setup)
+
 ---
 
 ## Deferred Testing Scenarios
 
 <!-- Items submitted as Skip during testing — include the condition needed to test -->
+
+- FR#6 error state: remove VITE_GOOGLE_MAPS_API_KEY from .env, restart dev, verify red error banner appears
+- FR#6 error state: confirm Contact us link in error banner navigates to /contact
+- FR#6 responsive: verify /service-area at ≤375px viewport (no overflow, correct stacking)
