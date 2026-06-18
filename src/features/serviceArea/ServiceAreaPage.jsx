@@ -70,47 +70,54 @@ function ServiceAreaMap({ isLoaded }) {
   useEffect(() => {
     if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
 
-    const map = new window.google.maps.Map(mapDivRef.current, {
-      center: BASE_COORDS,
-      zoom: 9,
-      mapTypeId: 'roadmap',
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true,
-    });
-    mapInstanceRef.current = map;
+    async function initMap() {
+      const { Map, Circle } = await window.google.maps.importLibrary('maps');
+      const { Marker, SymbolPath } = await window.google.maps.importLibrary('marker');
 
-    // Draw only zones with drawOnMap:true, outermost-first so inner rings paint on top.
-    [...PRICING_ZONES]
-      .filter((zone) => zone.drawOnMap)
-      .reverse()
-      .forEach((zone) => {
-        new window.google.maps.Circle({
-          map,
-          center: BASE_COORDS,
-          radius: zone.radiusMiles * MILES_TO_METERS,
-          fillColor: zone.fillColor,
-          fillOpacity: 0.18,
-          strokeColor: zone.strokeColor,
-          strokeOpacity: 0.8,
-          strokeWeight: 2,
-        });
+      const map = new Map(mapDivRef.current, {
+        center: BASE_COORDS,
+        zoom: 9,
+        mapTypeId: 'roadmap',
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
       });
+      mapInstanceRef.current = map;
 
-    // Center marker at the business base.
-    new window.google.maps.Marker({
-      position: BASE_COORDS,
-      map,
-      title: 'Tailwinds Pet Care base location',
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 9,
-        fillColor: COLORS.red,
-        fillOpacity: 1,
-        strokeColor: COLORS.white,
-        strokeWeight: 2,
-      },
-    });
+      // Draw only zones with drawOnMap:true, outermost-first so inner rings paint on top.
+      [...PRICING_ZONES]
+        .filter((zone) => zone.drawOnMap)
+        .reverse()
+        .forEach((zone) => {
+          new Circle({
+            map,
+            center: BASE_COORDS,
+            radius: zone.radiusMiles * MILES_TO_METERS,
+            fillColor: zone.fillColor,
+            fillOpacity: 0.18,
+            strokeColor: zone.strokeColor,
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+          });
+        });
+
+      // Center marker at the business base.
+      new Marker({
+        position: BASE_COORDS,
+        map,
+        title: 'Tailwinds Pet Care base location',
+        icon: {
+          path: SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: COLORS.red,
+          fillOpacity: 1,
+          strokeColor: COLORS.white,
+          strokeWeight: 2,
+        },
+      });
+    }
+
+    initMap();
   }, [isLoaded]);
 
   return (

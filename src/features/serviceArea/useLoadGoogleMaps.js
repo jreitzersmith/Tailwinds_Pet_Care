@@ -11,7 +11,7 @@ const SCRIPT_ID = 'google-maps-js-api';
  */
 function useLoadGoogleMaps(apiKey) {
   const [isLoaded, setIsLoaded] = useState(
-    () => typeof window !== 'undefined' && !!window.google?.maps,
+    () => typeof window !== 'undefined' && typeof window.google?.maps?.importLibrary === 'function',
   );
   const [hasError, setHasError] = useState(false);
 
@@ -21,7 +21,7 @@ function useLoadGoogleMaps(apiKey) {
       return;
     }
     // Already loaded by a previous render or call.
-    if (window.google?.maps) {
+    if (typeof window.google?.maps?.importLibrary === 'function') {
       setIsLoaded(true);
       return;
     }
