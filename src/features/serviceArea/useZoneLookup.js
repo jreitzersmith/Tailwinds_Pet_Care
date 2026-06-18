@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { BASE_COORDS, getZoneForDistance } from './serviceAreaData.js';
+import { BASE_COORDS, getZoneForPoint } from './serviceAreaData.js';
 
 function haversineDistanceMiles(a, b) {
   const R = 3958.8;
@@ -23,10 +23,10 @@ function useZoneLookup() {
   }, []);
 
   // Fast path: coords already known (e.g. from Places Autocomplete).
-  // No geocoding API call needed.
+  // Uses polygon containment for zone detection — no geocoding API call.
   const lookupByCoords = useCallback((latLng, formattedAddress, onResult) => {
     const distanceMiles = haversineDistanceMiles(BASE_COORDS, latLng);
-    const zone = getZoneForDistance(distanceMiles);
+    const zone = getZoneForPoint(latLng);
     const found = { zone, distanceMiles, formattedAddress, latLng };
     setResult(found);
     setError(null);
@@ -52,7 +52,7 @@ function useZoneLookup() {
         const loc = results[0].geometry.location;
         const latLng = { lat: loc.lat(), lng: loc.lng() };
         const distanceMiles = haversineDistanceMiles(BASE_COORDS, latLng);
-        const zone = getZoneForDistance(distanceMiles);
+        const zone = getZoneForPoint(latLng);
         const found = { zone, distanceMiles, formattedAddress: results[0].formatted_address, latLng };
         setResult(found);
         if (onResult) onResult(found);

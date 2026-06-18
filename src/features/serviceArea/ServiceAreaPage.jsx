@@ -1,8 +1,8 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useLoadGoogleMaps from './useLoadGoogleMaps.js';
-import { BASE_COORDS, PRICING_ZONES, MILES_TO_METERS } from './serviceAreaData.js';
+import { BASE_COORDS, PRICING_ZONES } from './serviceAreaData.js';
 import AddressSearch from './AddressSearch.jsx';
 
 // ── ZoneLegend ────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
     if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
 
     async function initMap() {
-      const { Map, Circle } = await window.google.maps.importLibrary('maps');
+      const { Map, Polygon } = await window.google.maps.importLibrary('maps');
       const { Marker } = await window.google.maps.importLibrary('marker');
       const { SymbolPath } = await window.google.maps.importLibrary('core');
 
@@ -88,15 +88,14 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
       });
       mapInstanceRef.current = map;
 
-      // Draw zones outermost-first so inner rings paint on top.
+      // Draw polygon zones outermost-first so inner zones render on top.
       [...PRICING_ZONES]
-        .filter((zone) => zone.drawOnMap)
+        .filter((zone) => zone.drawOnMap && zone.polygonPath)
         .reverse()
         .forEach((zone) => {
-          new Circle({
+          new Polygon({
             map,
-            center: BASE_COORDS,
-            radius: zone.radiusMiles * MILES_TO_METERS,
+            paths: zone.polygonPath,
             fillColor: zone.fillColor,
             fillOpacity: 0.18,
             strokeColor: zone.strokeColor,
@@ -131,7 +130,6 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
       const { Marker } = await window.google.maps.importLibrary('marker');
       const { SymbolPath } = await window.google.maps.importLibrary('core');
 
-      // Remove previous search marker if any
       if (searchMarkerRef.current) {
         searchMarkerRef.current.setMap(null);
         searchMarkerRef.current = null;
@@ -180,8 +178,6 @@ ServiceAreaMap.propTypes = {
   }),
 };
 
-
-
 // ── ServiceAreaPage ───────────────────────────────────────────────────────────
 
 function ServiceAreaPage() {
@@ -216,8 +212,8 @@ function ServiceAreaPage() {
           maxWidth: '640px',
         }}
       >
-        We serve the greater DFW area within a 40-mile radius of South Dallas.
-        A travel fee applies for visits beyond 5 miles. Zone 9 (40–100 miles)
+        We serve the greater DFW area around South Dallas.
+        A travel fee applies for visits outside Zone 1. Zone 9 (extended range)
         is available by arrangement — contact us for a quote.
       </p>
 
