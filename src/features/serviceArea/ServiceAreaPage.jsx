@@ -1,8 +1,9 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useLoadGoogleMaps from './useLoadGoogleMaps.js';
 import { BASE_COORDS, PRICING_ZONES, MILES_TO_METERS } from './serviceAreaData.js';
+import AddressSearch from './AddressSearch.jsx';
 
 // ── ZoneLegend ────────────────────────────────────────────────────────────────
 
@@ -63,10 +64,12 @@ function ZoneLegend() {
 
 // ── ServiceAreaMap ────────────────────────────────────────────────────────────
 
-function ServiceAreaMap({ isLoaded }) {
+function ServiceAreaMap({ isLoaded, searchedLocation }) {
   const mapDivRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const searchMarkerRef = useRef(null);
 
+  // Effect 1 — initialize map once Maps API is loaded
   useEffect(() => {
     if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
 
@@ -84,7 +87,7 @@ function ServiceAreaMap({ isLoaded }) {
       });
       mapInstanceRef.current = map;
 
-      // Draw only zones with drawOnMap:true, outermost-first so inner rings paint on top.
+      // Draw zones outermost-first so inner rings paint on top.
       [...PRICING_ZONES]
         .filter((zone) => zone.drawOnMap)
         .reverse()
@@ -101,7 +104,6 @@ function ServiceAreaMap({ isLoaded }) {
           });
         });
 
-      // Center marker at the business base.
       new Marker({
         position: BASE_COORDS,
         map,
@@ -120,6 +122,39 @@ function ServiceAreaMap({ isLoaded }) {
     initMap();
   }, [isLoaded]);
 
+  // Effect 2 — place/update search result marker when searchedLocation changes
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !searchedLocation) return;
+
+    async function placeSearchMarker() {
+      const { Marker, SymbolPath } = await window.google.maps.importLibrary('marker');
+
+      // Remove previous search marker if any
+      if (searchMarkerRef.current) {
+        searchMarkerRef.current.setMap(null);
+        searchMarkerRef.current = null;
+      }
+
+      const marker = new Marker({
+        position: searchedLocation.latLng,
+        map: mapInstanceRef.current,
+        title: searchedLocation.formattedAddress,
+        icon: {
+          path: SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: COLORS.blue,
+          fillOpacity: 1,
+          strokeColor: COLORS.white,
+          strokeWeight: 2,
+        },
+      });
+      searchMarkerRef.current = marker;
+      mapInstanceRef.current.panTo(searchedLocation.latLng);
+    }
+
+    placeSearchMarker();
+  }, [isLoaded, searchedLocation]);
+
   return (
     <div
       ref={mapDivRef}
@@ -137,6 +172,14 @@ function ServiceAreaMap({ isLoaded }) {
 
 ServiceAreaMap.propTypes = {
   isLoaded: PropTypes.bool.isRequired,
+  searchedLocation: PropTypes.shape({
+    latLng: PropTypes.shape({ lat: PropTypes.number, lng: PropTypes.number }),
+    formattedAddress: PropTypes.string,
+  }),
+};
+
+ServiceAreaMap.defaultProps = {
+  searchedLocation: null,
 };
 
 // ── ServiceAreaPage ───────────────────────────────────────────────────────────
@@ -144,6 +187,11 @@ ServiceAreaMap.propTypes = {
 function ServiceAreaPage() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const { isLoaded, hasError } = useLoadGoogleMaps(apiKey);
+  const [searchedLocation, setSearchedLocation] = useState(null);
+
+  const handleSearchResult = useCallback((found) => {
+    setSearchedLocation(found);
+  }, []);
 
   return (
     <div className='page-container'>
@@ -194,7 +242,9 @@ function ServiceAreaPage() {
         </p>
       )}
 
-      {!hasError && isLoaded && <ServiceAreaMap isLoaded={isLoaded} />}
+      {!hasError && isLoaded && (
+        <ServiceAreaMap isLoaded={isLoaded} searchedLocation={searchedLocation} />
+      )}
 
       {!hasError && !isLoaded && (
         <div
@@ -214,6 +264,10 @@ function ServiceAreaPage() {
         >
           Loading map…
         </div>
+      )}
+
+      {isLoaded && !hasError && (
+        <AddressSearch onResult={handleSearchResult} />
       )}
 
       <ZoneLegend />
