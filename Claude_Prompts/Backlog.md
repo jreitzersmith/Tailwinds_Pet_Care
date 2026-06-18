@@ -29,13 +29,13 @@ On new entry: file a GitHub issue immediately. Record GH# and date:
 
 ### Phase 1 — Marketing Site
 
-- [ ] FR#1 (2026-06-18) — Vite project init: scaffold React/Vite, install deps, configure vite.config.js
-- [ ] FR#2 (2026-06-18) — Home/Hero section: logo, tagline, CTA, social links (Facebook, Instagram)
-- [ ] FR#3 (2026-06-18) — Services page: list all service types, descriptions, base pricing
-- [ ] FR#4 (2026-06-18) — About page: company story, owner bio, pets served, target market
-- [ ] FR#5 (2026-06-18) — Contact section: phone, address, inquiry form
+- [x] FR#1 (2026-06-18) — Vite project init: scaffold React/Vite, install deps, configure vite.config.js
+- [x] FR#2 (2026-06-18) — Home/Hero section: logo, tagline, CTA, social links (Facebook, Instagram)
+- [x] FR#3 (2026-06-18) — Services page: list all service types, descriptions, base pricing
+- [x] FR#4 (2026-06-18) — About page: company story, owner bio, pets served, target market
+- [x] FR#5 (2026-06-18) — Contact section: phone, address, inquiry form
 - [x] FR#6 (2026-06-18) — Service Area map: Google Maps with pricing zones by distance from 2500 South Blvd
-- [ ] FR#7 (2026-06-18) — Global nav, footer, responsive layout, brand styling throughout
+- [x] FR#7 (2026-06-18) — Global nav, footer, responsive layout, brand styling throughout
 - [ ] FR#8 (2026-06-18) — Infrastructure: nginx vhost + DNS A records + Let's Encrypt cert for tailwindspetcare.com
 
 ### Phase 2 — Auth + Booking (deferred)

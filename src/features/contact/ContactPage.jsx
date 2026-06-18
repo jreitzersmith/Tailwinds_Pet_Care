@@ -1,4 +1,4 @@
-import useContactForm from './useContactForm.js';
+﻿import useContactForm from './useContactForm.js';
 import { COLORS, FONTS, CONTACT } from '../../constants.jsx';
 
 const SERVICE_OPTIONS = [
@@ -172,10 +172,6 @@ function ContactPage() {
             <div style={infoItemStyle}>
               <span style={infoLabelStyle}>Email</span>
               <a href={`mailto:${CONTACT.email}`} style={infoLinkStyle}>{CONTACT.email}</a>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Address</span>
-              {CONTACT.address}
             </div>
             <div style={infoItemStyle}>
               <span style={infoLabelStyle}>Service Area</span>
