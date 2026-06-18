@@ -75,8 +75,6 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
 
     async function initMap() {
       const { Map, Polygon } = await window.google.maps.importLibrary('maps');
-      const { Marker } = await window.google.maps.importLibrary('marker');
-      const { SymbolPath } = await window.google.maps.importLibrary('core');
 
       const map = new Map(mapDivRef.current, {
         center: BASE_COORDS,
@@ -104,19 +102,7 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
           });
         });
 
-      new Marker({
-        position: BASE_COORDS,
-        map,
-        title: 'Tailwinds Pet Care base location',
-        icon: {
-          path: SymbolPath.CIRCLE,
-          scale: 9,
-          fillColor: COLORS.red,
-          fillOpacity: 1,
-          strokeColor: COLORS.white,
-          strokeWeight: 2,
-        },
-      });
+
     }
 
     initMap();
