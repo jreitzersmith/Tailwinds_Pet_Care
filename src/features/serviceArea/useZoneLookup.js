@@ -1,10 +1,6 @@
 import { useState, useCallback } from 'react';
 import { BASE_COORDS, getZoneForDistance } from './serviceAreaData.js';
 
-/**
- * Haversine formula — straight-line distance between two lat/lng coords in miles.
- * Accurate enough for zone lookup; does not account for road distance.
- */
 function haversineDistanceMiles(a, b) {
   const R = 3958.8;
   const toRad = (deg) => deg * (Math.PI / 180);
@@ -16,15 +12,6 @@ function haversineDistanceMiles(a, b) {
   return R * 2 * Math.asin(Math.sqrt(chord));
 }
 
-/**
- * Geocodes an address, calculates its distance from the service base,
- * and returns the matching pricing zone.
- *
- * Requires the Google Maps Geocoding API to be enabled in GCP.
- * Calls onResult({ latLng, zone, distanceMiles, formattedAddress }) on success.
- *
- * @returns {{ lookup, result, isSearching, error, reset }}
- */
 function useZoneLookup() {
   const [result, setResult] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -35,36 +22,38 @@ function useZoneLookup() {
     setError(null);
   }, []);
 
+  // Fast path: coords already known (e.g. from Places Autocomplete).
+  // No geocoding API call needed.
+  const lookupByCoords = useCallback((latLng, formattedAddress, onResult) => {
+    const distanceMiles = haversineDistanceMiles(BASE_COORDS, latLng);
+    const zone = getZoneForDistance(distanceMiles);
+    const found = { zone, distanceMiles, formattedAddress, latLng };
+    setResult(found);
+    setError(null);
+    if (onResult) onResult(found);
+  }, []);
+
+  // Fallback path: geocode a free-text address when no autocomplete place was selected.
   const lookup = useCallback(async (address, onResult) => {
     const trimmed = address.trim();
     if (!trimmed) return;
-
     setIsSearching(true);
     setError(null);
     setResult(null);
-
     try {
       const { Geocoder } = await window.google.maps.importLibrary('geocoding');
       const geocoder = new Geocoder();
-
       geocoder.geocode({ address: trimmed, region: 'us' }, (results, status) => {
         setIsSearching(false);
         if (status !== 'OK' || !results.length) {
           setError('Address not found. Please try a more specific address including city and state.');
           return;
         }
-
         const loc = results[0].geometry.location;
         const latLng = { lat: loc.lat(), lng: loc.lng() };
         const distanceMiles = haversineDistanceMiles(BASE_COORDS, latLng);
         const zone = getZoneForDistance(distanceMiles);
-        const found = {
-          zone,
-          distanceMiles,
-          formattedAddress: results[0].formatted_address,
-          latLng,
-        };
-
+        const found = { zone, distanceMiles, formattedAddress: results[0].formatted_address, latLng };
         setResult(found);
         if (onResult) onResult(found);
       });
@@ -74,7 +63,7 @@ function useZoneLookup() {
     }
   }, []);
 
-  return { lookup, result, isSearching, error, reset };
+  return { lookup, lookupByCoords, result, isSearching, error, reset };
 }
 
 export default useZoneLookup;

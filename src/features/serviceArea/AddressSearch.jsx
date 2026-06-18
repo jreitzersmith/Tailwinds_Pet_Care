@@ -1,19 +1,68 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useZoneLookup from './useZoneLookup.js';
 
+// Bias autocomplete suggestions toward DFW without hard-restricting them.
+const DFW_BOUNDS = { north: 33.3, south: 32.2, east: -96.3, west: -97.8 };
+
 function AddressSearch({ onResult }) {
   const [inputValue, setInputValue] = useState('');
-  const { lookup, result, isSearching, error, reset } = useZoneLookup();
+  const { lookup, lookupByCoords, result, isSearching, error, reset } = useZoneLookup();
+  const inputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  // Tracks whether the current inputValue came from an autocomplete selection.
+  const selectedPlaceRef = useRef(null);
+
+  // Initialize Places Autocomplete once on mount.
+  // AddressSearch only renders after Maps API is loaded, so importLibrary is safe.
+  useEffect(() => {
+    if (!inputRef.current || autocompleteRef.current) return;
+
+    async function initAutocomplete() {
+      try {
+        const { Autocomplete } = await window.google.maps.importLibrary('places');
+        const ac = new Autocomplete(inputRef.current, {
+          componentRestrictions: { country: 'us' },
+          bounds: DFW_BOUNDS,
+          strictBounds: false,
+          fields: ['geometry', 'formatted_address'],
+          types: ['geocode'],
+        });
+        autocompleteRef.current = ac;
+
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          if (!place.geometry?.location) return;
+          const latLng = {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng(),
+          };
+          const formattedAddress = place.formatted_address || inputRef.current.value;
+          selectedPlaceRef.current = formattedAddress;
+          setInputValue(formattedAddress);
+          lookupByCoords(latLng, formattedAddress, onResult);
+        });
+      } catch (e) {
+        // Places API unavailable — geocoding fallback still works on form submit.
+        console.warn('Places Autocomplete unavailable:', e.message);
+      }
+    }
+
+    initAutocomplete();
+  }, [lookupByCoords, onResult]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // If the current value was already resolved via autocomplete, don't re-geocode.
+    if (selectedPlaceRef.current === inputValue) return;
+    selectedPlaceRef.current = null;
     lookup(inputValue, onResult);
   };
 
   const handleChange = (e) => {
     setInputValue(e.target.value);
+    selectedPlaceRef.current = null;
     if (result || error) reset();
   };
 
@@ -69,18 +118,25 @@ function AddressSearch({ onResult }) {
       <form
         onSubmit={handleSubmit}
         style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}
+        autoComplete='off'
       >
         <input
+          ref={inputRef}
           id='address-search'
           type='text'
           value={inputValue}
           onChange={handleChange}
-          placeholder='Enter an address, city, or zip code'
+          placeholder='Start typing an address, city, or zip…'
           style={inputStyle}
           disabled={isSearching}
           aria-label='Enter address to look up service zone'
+          aria-autocomplete='list'
         />
-        <button type='submit' style={btnStyle} disabled={isSearching || !inputValue.trim()}>
+        <button
+          type='submit'
+          style={btnStyle}
+          disabled={isSearching || !inputValue.trim()}
+        >
           {isSearching ? 'Searching…' : 'Check coverage'}
         </button>
       </form>
@@ -111,11 +167,7 @@ AddressSearch.propTypes = {
 // ── SearchResult ──────────────────────────────────────────────────────────────
 
 function SearchResult({ result }) {
-  const { zone, distanceMiles, formattedAddress, feeDisplay } = {
-    ...result,
-    feeDisplay: result.zone ? result.zone.feeDisplay : null,
-  };
-
+  const { zone, distanceMiles, formattedAddress } = result;
   const isOutOfRange = !zone;
 
   const cardStyle = {
@@ -147,8 +199,7 @@ function SearchResult({ result }) {
           {'  ·  '}
           {distanceMiles.toFixed(1)} miles from base
           {'  ·  '}
-          Travel fee:{' '}
-          <strong>{feeDisplay}</strong>
+          Travel fee: <strong>{zone.feeDisplay}</strong>
         </p>
       )}
     </div>
