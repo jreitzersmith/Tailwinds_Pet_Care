@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useLoadGoogleMaps from './useLoadGoogleMaps.js';
@@ -25,7 +25,7 @@ const tdStyle = {
 function ZoneLegend() {
   return (
     <table
-      style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1.75rem' }}
+      style={{ maxWidth: '480px', width: '100%', borderCollapse: 'collapse', margin: '1.75rem auto 0' }}
       aria-label='Service area pricing zones'
     >
       <thead>
