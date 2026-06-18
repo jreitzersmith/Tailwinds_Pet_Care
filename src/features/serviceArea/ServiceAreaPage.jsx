@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useLoadGoogleMaps from './useLoadGoogleMaps.js';
@@ -75,7 +75,8 @@ function ServiceAreaMap({ isLoaded, searchedLocation }) {
 
     async function initMap() {
       const { Map, Circle } = await window.google.maps.importLibrary('maps');
-      const { Marker, SymbolPath } = await window.google.maps.importLibrary('marker');
+      const { Marker } = await window.google.maps.importLibrary('marker');
+      const { SymbolPath } = await window.google.maps.importLibrary('core');
 
       const map = new Map(mapDivRef.current, {
         center: BASE_COORDS,
@@ -127,7 +128,8 @@ function ServiceAreaMap({ isLoaded, searchedLocation }) {
     if (!isLoaded || !mapInstanceRef.current || !searchedLocation) return;
 
     async function placeSearchMarker() {
-      const { Marker, SymbolPath } = await window.google.maps.importLibrary('marker');
+      const { Marker } = await window.google.maps.importLibrary('marker');
+      const { SymbolPath } = await window.google.maps.importLibrary('core');
 
       // Remove previous search marker if any
       if (searchMarkerRef.current) {
