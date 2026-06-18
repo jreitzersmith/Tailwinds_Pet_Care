@@ -212,7 +212,7 @@ function ServiceAreaPage() {
           maxWidth: '640px',
         }}
       >
-        We serve the greater DFW area around South Dallas.
+        We serve the greater DFW area, centered on downtown Dallas.
         A travel fee applies for visits outside Zone 1. Zone 9 (extended range)
         is available by arrangement — contact us for a quote.
       </p>
