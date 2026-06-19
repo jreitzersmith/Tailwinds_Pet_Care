@@ -36,7 +36,7 @@ On new entry: file a GitHub issue immediately. Record GH# and date:
 - [x] FR#5 (2026-06-18) — Contact section: phone, address, inquiry form
 - [x] FR#6 (2026-06-18) — Service Area map: Google Maps with pricing zones by distance from 2500 South Blvd
 - [x] FR#7 (2026-06-18) — Global nav, footer, responsive layout, brand styling throughout
-- [ ] FR#8 (2026-06-18) — Infrastructure: nginx vhost + DNS A records + Let's Encrypt cert for tailwindspetcare.com
+- [x] FR#8 (2026-06-18) — Infrastructure: nginx vhost + DNS A records + Let's Encrypt cert for tailwindspetcare.com
 
 ### Phase 2 — Auth + Booking (deferred)
 

@@ -40,6 +40,6 @@ npx vite build --outDir /tmp/tailwinds-build --emptyOutDir
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Marketing site (FR#1–FR#8) | 🔲 Not started |
+| 1 | Marketing site (FR#1–FR#8) | ✅ Complete |
 | 2 | Auth + Booking (FR#9–FR#13) | ⏸ Deferred |
 | 3 | Payments (FR#14–FR#16) | ⏸ Deferred |
