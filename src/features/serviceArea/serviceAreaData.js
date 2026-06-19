@@ -1,23 +1,56 @@
 // Service area constants — single source of truth for zone definitions.
-// Base location: South Dallas. Update CLAUDE.md when fees change.
+// Base location: 2500 South Blvd, Dallas TX. Update CLAUDE.md when fees change.
 //
 // Zone polygons are loaded from Map_Coord/GeoZones_Current.json at build time.
-// To update zones: replace GeoZones_Current.json (archive the old file as
-// GeoZones_Replaced_YYYY.MM.DD.json), then rebuild.
+// To regenerate zones from drive-time isochrones:
+//   1. python Map_Coord/generate_geo_zones.py
+//   2. npm run build
 
 import geoZonesData from '../../../../Map_Coord/GeoZones_Current.json';
 
 export const BASE_COORDS = { lat: 32.7383, lng: -96.7952 };
 
-// Convert GeoJSON [lng, lat] coordinate pairs to Google Maps {lat, lng} objects.
-// Each feature is a LineString — Google Maps Polygon auto-closes the ring.
-const ZONE_POLYGONS = geoZonesData.features.map((feat) =>
-  feat.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }))
-);
+// ---------------------------------------------------------------------------
+// Convert GeoJSON features to zone polygon paths.
+// Supports two formats:
+//   New (generate_geo_zones.py output): Polygon features with properties.zone
+//   Legacy (hand-drawn): LineString features matched by index order
+// ---------------------------------------------------------------------------
+
+function ringToLatLng(coords) {
+  return coords.map(([lng, lat]) => ({ lat, lng }));
+}
+
+function buildZonePolygonMap(geojson) {
+  const map = {};
+  const features = geojson.features;
+  const hasZoneProperty = features.length > 0 && features[0].properties?.zone != null;
+
+  if (hasZoneProperty) {
+    // New format — match by zone number in properties
+    for (const feat of features) {
+      const zoneNum = feat.properties.zone;
+      const coords = feat.geometry.type === 'Polygon'
+        ? feat.geometry.coordinates[0]  // Polygon outer ring
+        : feat.geometry.coordinates;    // LineString
+      map[zoneNum] = ringToLatLng(coords);
+    }
+  } else {
+    // Legacy format — features are ordered Zone 1 → Zone N by index
+    features.forEach((feat, i) => {
+      const coords = feat.geometry.type === 'Polygon'
+        ? feat.geometry.coordinates[0]
+        : feat.geometry.coordinates;
+      map[i + 1] = ringToLatLng(coords);
+    });
+  }
+  return map;
+}
+
+const ZONE_POLYGON_MAP = buildZonePolygonMap(geoZonesData);
 
 // Zones ordered innermost-first (Zone 1 → Zone 9).
-// Polygon overlays draw outermost-first so inner zones render on top.
-// Zone 9 has no polygon; matched by haversine distance fallback.
+// Zones with no polygon entry fall back to haversine in getZoneForPoint().
 export const PRICING_ZONES = [
   {
     label: 'Zone 1',
@@ -25,7 +58,7 @@ export const PRICING_ZONES = [
     fillColor: '#4CAF50',
     strokeColor: '#388E3C',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[0],
+    polygonPath: ZONE_POLYGON_MAP[1] ?? null,
   },
   {
     label: 'Zone 2',
@@ -33,7 +66,7 @@ export const PRICING_ZONES = [
     fillColor: '#26A69A',
     strokeColor: '#00796B',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[1],
+    polygonPath: ZONE_POLYGON_MAP[2] ?? null,
   },
   {
     label: 'Zone 3',
@@ -41,7 +74,7 @@ export const PRICING_ZONES = [
     fillColor: '#29B6F6',
     strokeColor: '#0277BD',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[2],
+    polygonPath: ZONE_POLYGON_MAP[3] ?? null,
   },
   {
     label: 'Zone 4',
@@ -49,7 +82,7 @@ export const PRICING_ZONES = [
     fillColor: '#FFD54F',
     strokeColor: '#F57F17',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[3],
+    polygonPath: ZONE_POLYGON_MAP[4] ?? null,
   },
   {
     label: 'Zone 5',
@@ -57,7 +90,7 @@ export const PRICING_ZONES = [
     fillColor: '#FFA726',
     strokeColor: '#E65100',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[4],
+    polygonPath: ZONE_POLYGON_MAP[5] ?? null,
   },
   {
     label: 'Zone 6',
@@ -65,7 +98,7 @@ export const PRICING_ZONES = [
     fillColor: '#FF7043',
     strokeColor: '#BF360C',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[5],
+    polygonPath: ZONE_POLYGON_MAP[6] ?? null,
   },
   {
     label: 'Zone 7',
@@ -73,7 +106,7 @@ export const PRICING_ZONES = [
     fillColor: '#EF5350',
     strokeColor: '#C62828',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[6],
+    polygonPath: ZONE_POLYGON_MAP[7] ?? null,
   },
   {
     label: 'Zone 8',
@@ -81,7 +114,7 @@ export const PRICING_ZONES = [
     fillColor: '#B71C1C',
     strokeColor: '#7F0000',
     drawOnMap: true,
-    polygonPath: ZONE_POLYGONS[7],
+    polygonPath: ZONE_POLYGON_MAP[8] ?? null,
   },
   {
     label: 'Zone 9',
@@ -128,12 +161,13 @@ function haversineDistanceMiles(a, b) {
 
 /**
  * Returns the pricing zone for a given {lat, lng} point.
- * Checks polygon containment for zones 1-8 (innermost first),
- * then falls back to haversine distance for zone 9 (40-100 mi).
- * Returns null if the point is beyond Zone 9's range (>100 miles).
+ * Checks polygon containment for zones 1-8 (innermost first).
+ * Zones without a polygon are skipped and fall through.
+ * Falls back to haversine distance for zone 9 (out-of-polygon, ≤100 mi).
+ * Returns null if out of range.
  *
  * @param {{ lat: number, lng: number }} latLng
- * @returns {object|null} Matching zone object, or null if out of range
+ * @returns {object|null}
  */
 export function getZoneForPoint(latLng) {
   const { lat, lng } = latLng;
