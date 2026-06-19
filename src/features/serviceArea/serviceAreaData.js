@@ -94,6 +94,9 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 6',
+    // maxMiles used as distance fallback when no Mapbox polygon is available (>60 min limit).
+    // ~65-min drive at 25–30 mph city speed ≈ 28 miles as-the-crow-flies.
+    maxMiles: 28,
     feeDisplay: '+$17.50',
     fillColor: '#FF7043',
     strokeColor: '#BF360C',
@@ -102,6 +105,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 7',
+    maxMiles: 32, // ~75-min drive fallback
     feeDisplay: '+$20',
     fillColor: '#EF5350',
     strokeColor: '#C62828',
@@ -110,6 +114,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 8',
+    maxMiles: 36, // ~85-min drive fallback
     feeDisplay: '+$25',
     fillColor: '#B71C1C',
     strokeColor: '#7F0000',
@@ -171,14 +176,24 @@ function haversineDistanceMiles(a, b) {
  */
 export function getZoneForPoint(latLng) {
   const { lat, lng } = latLng;
+  const dist = haversineDistanceMiles(BASE_COORDS, latLng);
+
+  // Pass 1: polygon containment for zones that have isochrone polygon data.
   for (const zone of PRICING_ZONES) {
     if (zone.polygonPath && pointInPolygon(lat, lng, zone.polygonPath)) {
       return zone;
     }
   }
-  const zone9 = PRICING_ZONES.find((z) => z.label === 'Zone 9');
-  const dist = haversineDistanceMiles(BASE_COORDS, latLng);
-  return dist < zone9.maxMiles ? zone9 : null;
+
+  // Pass 2: maxMiles fallback for zones without polygons (e.g. zones > Mapbox 60-min limit).
+  // Checked innermost-first (PRICING_ZONES order) so the tightest matching zone wins.
+  for (const zone of PRICING_ZONES) {
+    if (!zone.polygonPath && zone.maxMiles && dist < zone.maxMiles) {
+      return zone;
+    }
+  }
+
+  return null;
 }
 
 /**

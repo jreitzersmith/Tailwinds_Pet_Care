@@ -64,12 +64,14 @@ function ZoneLegend() {
 
 // ── ServiceAreaMap ────────────────────────────────────────────────────────────
 
-function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
+function ServiceAreaMap({ isLoaded, searchedLocation = null, showZones }) {
   const mapDivRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const searchMarkerRef = useRef(null);
+  const polygonRefsRef = useRef([]); // [{ label, polygon }]
+  const [polygonsReady, setPolygonsReady] = useState(false);
 
-  // Effect 1 — initialize map once Maps API is loaded
+  // Effect 1 — initialize map and create polygon overlays (all hidden initially)
   useEffect(() => {
     if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
 
@@ -86,23 +88,29 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
       });
       mapInstanceRef.current = map;
 
-      // Draw polygon zones outermost-first so inner zones render on top.
+      // Create all zone polygons hidden; visibility is controlled by Effect 3.
+      // Draw outermost-first so inner zones render on top when made visible.
+      const drawn = [];
       [...PRICING_ZONES]
         .filter((zone) => zone.drawOnMap && zone.polygonPath)
         .reverse()
         .forEach((zone) => {
-          new Polygon({
+          const polygon = new Polygon({
             map,
             paths: zone.polygonPath,
             fillColor: zone.fillColor,
-            fillOpacity: 0.18,
+            fillOpacity: 0.2,
             strokeColor: zone.strokeColor,
-            strokeOpacity: 0.8,
+            strokeOpacity: 0.85,
             strokeWeight: 2,
+            visible: false,
           });
+          drawn.push({ label: zone.label, polygon });
         });
 
-
+      // Store in innermost-first order for consistent visibility iteration
+      polygonRefsRef.current = drawn.slice().reverse();
+      setPolygonsReady(true);
     }
 
     initMap();
@@ -141,6 +149,16 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
     placeSearchMarker();
   }, [isLoaded, searchedLocation]);
 
+  // Effect 3 — sync polygon visibility whenever toggle or search result changes
+  useEffect(() => {
+    if (!polygonsReady || polygonRefsRef.current.length === 0) return;
+    const matchedLabel = searchedLocation?.zone?.label ?? null;
+    polygonRefsRef.current.forEach(({ label, polygon }) => {
+      const isMatched = label === matchedLabel;
+      polygon.setVisible(showZones || isMatched);
+    });
+  }, [polygonsReady, showZones, searchedLocation]);
+
   return (
     <div
       ref={mapDivRef}
@@ -158,9 +176,11 @@ function ServiceAreaMap({ isLoaded, searchedLocation = null }) {
 
 ServiceAreaMap.propTypes = {
   isLoaded: PropTypes.bool.isRequired,
+  showZones: PropTypes.bool.isRequired,
   searchedLocation: PropTypes.shape({
     latLng: PropTypes.shape({ lat: PropTypes.number, lng: PropTypes.number }),
     formattedAddress: PropTypes.string,
+    zone: PropTypes.object,
   }),
 };
 
@@ -170,10 +190,24 @@ function ServiceAreaPage() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const { isLoaded, hasError } = useLoadGoogleMaps(apiKey);
   const [searchedLocation, setSearchedLocation] = useState(null);
+  const [showZones, setShowZones] = useState(false);
 
   const handleSearchResult = useCallback((found) => {
     setSearchedLocation(found);
   }, []);
+
+  const toggleBtnStyle = {
+    fontFamily: FONTS.body,
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    padding: '0.4rem 1rem',
+    border: `1px solid ${COLORS.blue}`,
+    borderRadius: '4px',
+    backgroundColor: showZones ? COLORS.blue : COLORS.white,
+    color: showZones ? COLORS.white : COLORS.blue,
+    cursor: 'pointer',
+    transition: 'background-color 0.15s, color 0.15s',
+  };
 
   return (
     <div className='page-container'>
@@ -225,7 +259,11 @@ function ServiceAreaPage() {
       )}
 
       {!hasError && isLoaded && (
-        <ServiceAreaMap isLoaded={isLoaded} searchedLocation={searchedLocation} />
+        <ServiceAreaMap
+          isLoaded={isLoaded}
+          searchedLocation={searchedLocation}
+          showZones={showZones}
+        />
       )}
 
       {!hasError && !isLoaded && (
@@ -245,6 +283,18 @@ function ServiceAreaPage() {
           aria-live='polite'
         >
           Loading map…
+        </div>
+      )}
+
+      {isLoaded && !hasError && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+          <button
+            style={toggleBtnStyle}
+            onClick={() => setShowZones((prev) => !prev)}
+            aria-pressed={showZones}
+          >
+            {showZones ? 'Hide zones' : 'Show all zones'}
+          </button>
         </div>
       )}
 
