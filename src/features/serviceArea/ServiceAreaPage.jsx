@@ -191,6 +191,7 @@ function ServiceAreaPage() {
   const { isLoaded, hasError } = useLoadGoogleMaps(apiKey);
   const [searchedLocation, setSearchedLocation] = useState(null);
   const [showZones, setShowZones] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
 
   const handleSearchResult = useCallback((found) => {
     setSearchedLocation(found);
@@ -302,7 +303,40 @@ function ServiceAreaPage() {
         <AddressSearch onResult={handleSearchResult} />
       )}
 
-      <ZoneLegend />
+      {/* Collapsible zone pricing legend */}
+      <div style={{ marginTop: '1.75rem', maxWidth: '480px', margin: '1.75rem auto 0' }}>
+        <button
+          onClick={() => setShowLegend((prev) => !prev)}
+          aria-expanded={showLegend}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: FONTS.body,
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            color: COLORS.blue,
+            padding: '0.25rem 0',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              transition: 'transform 0.2s',
+              transform: showLegend ? 'rotate(90deg)' : 'rotate(0deg)',
+              fontSize: '0.75rem',
+            }}
+          >
+            ▶
+          </span>
+          {showLegend ? 'Hide travel fees by zone' : 'View travel fees by zone'}
+        </button>
+
+        {showLegend && <ZoneLegend />}
+      </div>
 
       <p
         style={{
@@ -311,6 +345,8 @@ function ServiceAreaPage() {
           color: '#666',
           marginTop: '1.25rem',
           lineHeight: 1.65,
+          maxWidth: '480px',
+          margin: '1.25rem auto 0',
         }}
       >
         Travel fees are added to the base service rate. Zone 1 has no travel fee.{' '}
