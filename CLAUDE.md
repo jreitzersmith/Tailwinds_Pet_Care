@@ -1,4 +1,4 @@
-﻿# TailwindsPetCare — Project Brief
+# TailwindsPetCare — Project Brief
 
 **Project path:** `C:\Programming_Projects\Tailswinds_Pet_Care`
 **Domain:** tailwindspetcare.com
@@ -29,7 +29,7 @@
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Marketing site: Home/Hero, Services, About, Contact, Service Area map, social links | 🔲 Not started |
-| 2 | Auth + Booking: Supabase schema, customer login, booking flow, customer portal, distance pricing | ⏸ Deferred |
+| 2 | Auth + Booking: Supabase schema, customer login, booking flow, customer portal, distance pricing | ✅ Complete (build + deploy pending) |
 | 3 | Payments: Square, PayPal, Google Pay | ⏸ Deferred |
 
 ---

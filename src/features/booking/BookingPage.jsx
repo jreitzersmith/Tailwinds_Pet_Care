@@ -1,0 +1,110 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { COLORS, FONTS } from '../../constants.jsx';
+import useBookingForm, { STEPS } from './useBookingForm.js';
+import ServiceStep from './steps/ServiceStep.jsx';
+import ScheduleStep from './steps/ScheduleStep.jsx';
+import PetStep from './steps/PetStep.jsx';
+import ConfirmStep from './steps/ConfirmStep.jsx';
+
+export default function BookingPage() {
+  const navigate = useNavigate();
+  const booking  = useBookingForm();
+  const [submitted, setSubmitted] = useState(false);
+
+  if (submitted) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.card}>
+          <h1 style={styles.heading}>Booking Confirmed!</h1>
+          <p style={styles.body}>
+            Thank you! We will reach out to confirm the details within 24 hours.
+          </p>
+          <div style={styles.btnRow}>
+            <button style={styles.primaryBtn} onClick={() => navigate('/portal')}>
+              View My Bookings
+            </button>
+            <button style={styles.secondaryBtn} onClick={() => { booking.reset(); setSubmitted(false); }}>
+              Book Another
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const stepProps = { booking, onSubmitSuccess: () => setSubmitted(true) };
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.card}>
+        <h1 style={styles.heading}>Book a Service</h1>
+
+        {/* Progress indicator */}
+        <div style={styles.progress}>
+          {STEPS.map((label, i) => (
+            <div key={label} style={styles.progressItem}>
+              <div style={{
+                ...styles.progressDot,
+                background: i <= booking.step ? COLORS.blue : COLORS.lightBlue,
+              }}>
+                {i < booking.step ? '✓' : i + 1}
+              </div>
+              <span style={{
+                ...styles.progressLabel,
+                color: i <= booking.step ? COLORS.blue : COLORS.lightBlue,
+              }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {booking.step === 0 && <ServiceStep  {...stepProps} />}
+        {booking.step === 1 && <ScheduleStep {...stepProps} />}
+        {booking.step === 2 && <PetStep      {...stepProps} />}
+        {booking.step === 3 && <ConfirmStep  {...stepProps} />}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: '100vh', background: COLORS.white, padding: '2rem 1rem',
+  },
+  card: {
+    background: COLORS.white, border: `1px solid ${COLORS.lightBlue}`,
+    borderRadius: '12px', padding: '2rem', maxWidth: '640px',
+    margin: '0 auto', boxShadow: '0 4px 24px rgba(104,175,230,0.10)',
+  },
+  heading: {
+    fontFamily: FONTS.header, color: COLORS.blue, marginBottom: '1.5rem', textAlign: 'center',
+  },
+  progress: {
+    display: 'flex', justifyContent: 'space-between', marginBottom: '2rem',
+  },
+  progressItem: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flex: 1,
+  },
+  progressDot: {
+    width: '2rem', height: '2rem', borderRadius: '50%', color: COLORS.white,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '0.85rem', fontWeight: '700',
+  },
+  progressLabel: {
+    fontSize: '0.75rem', fontFamily: FONTS.body,
+  },
+  body: {
+    fontFamily: FONTS.body, lineHeight: 1.6, color: COLORS.black, textAlign: 'center',
+    marginBottom: '1.5rem',
+  },
+  btnRow: { display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' },
+  primaryBtn: {
+    padding: '0.75rem 1.5rem', background: COLORS.blue, color: COLORS.white,
+    border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer', fontFamily: FONTS.body,
+  },
+  secondaryBtn: {
+    padding: '0.75rem 1.5rem', background: COLORS.white, color: COLORS.blue,
+    border: `2px solid ${COLORS.blue}`, borderRadius: '8px', fontSize: '1rem',
+    cursor: 'pointer', fontFamily: FONTS.body,
+  },
+};

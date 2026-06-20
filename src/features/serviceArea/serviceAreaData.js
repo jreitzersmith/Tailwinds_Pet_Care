@@ -54,6 +54,7 @@ const ZONE_POLYGON_MAP = buildZonePolygonMap(geoZonesData);
 export const PRICING_ZONES = [
   {
     label: 'Zone 1',
+    fee: 0,
     feeDisplay: 'None',
     fillColor: '#4CAF50',
     strokeColor: '#388E3C',
@@ -62,6 +63,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 2',
+    fee: 5,
     feeDisplay: '+$5',
     fillColor: '#26A69A',
     strokeColor: '#00796B',
@@ -70,6 +72,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 3',
+    fee: 10,
     feeDisplay: '+$10',
     fillColor: '#29B6F6',
     strokeColor: '#0277BD',
@@ -78,6 +81,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 4',
+    fee: 12,
     feeDisplay: '+$12',
     fillColor: '#FFD54F',
     strokeColor: '#F57F17',
@@ -86,6 +90,7 @@ export const PRICING_ZONES = [
   },
   {
     label: 'Zone 5',
+    fee: 15,
     feeDisplay: '+$15',
     fillColor: '#FFA726',
     strokeColor: '#E65100',
@@ -97,6 +102,7 @@ export const PRICING_ZONES = [
     // maxMiles used as distance fallback when no Mapbox polygon is available (>60 min limit).
     // ~65-min drive at 25–30 mph city speed ≈ 28 miles as-the-crow-flies.
     maxMiles: 28,
+    fee: 17.50,
     feeDisplay: '+$17.50',
     fillColor: '#FF7043',
     strokeColor: '#BF360C',
@@ -106,6 +112,7 @@ export const PRICING_ZONES = [
   {
     label: 'Zone 7',
     maxMiles: 32, // ~75-min drive fallback
+    fee: 20,
     feeDisplay: '+$20',
     fillColor: '#EF5350',
     strokeColor: '#C62828',
@@ -115,6 +122,7 @@ export const PRICING_ZONES = [
   {
     label: 'Zone 8',
     maxMiles: 36, // ~85-min drive fallback
+    fee: 25,
     feeDisplay: '+$25',
     fillColor: '#B71C1C',
     strokeColor: '#7F0000',
@@ -124,6 +132,7 @@ export const PRICING_ZONES = [
   {
     label: 'Zone 9',
     maxMiles: 100,
+    fee: 0,  // Zone 9: quoted individually — confirm before booking
     feeDisplay: 'Location dependent',
     fillColor: '#9E9E9E',
     strokeColor: '#424242',

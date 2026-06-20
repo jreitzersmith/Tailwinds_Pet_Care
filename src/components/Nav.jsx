@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { COLORS, FONTS, BUSINESS } from '../constants.jsx';
+import { useAuth } from '../features/auth/AuthContext.jsx';
 
 const NAV_LINKS = [
   { to: '/',            label: 'Home' },
@@ -12,6 +13,13 @@ const NAV_LINKS = [
 
 function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleSignOut() {
+    await signOut();
+    navigate('/', { replace: true });
+  }
 
   const navStyle = {
     backgroundColor: COLORS.blue,
@@ -60,10 +68,41 @@ function Nav() {
               </NavLink>
             </li>
           ))}
+          {user ? (
+            <>
+              <li>
+                <NavLink to='/portal' style={linkStyle} onClick={() => setMenuOpen(false)}>
+                  My Account
+                </NavLink>
+              </li>
+              <li>
+                <button onClick={() => { handleSignOut(); setMenuOpen(false); }} style={navBtnStyle}>
+                  Sign Out
+                </button>
+              </li>
+            </>
+          ) : (
+            <li>
+              <NavLink to='/login' style={linkStyle} onClick={() => setMenuOpen(false)}>
+                Sign In
+              </NavLink>
+            </li>
+          )}
         </ul>
       </div>
     </nav>
   );
 }
+
+const navBtnStyle = {
+  background: 'none',
+  border: 'none',
+  color: COLORS.white,
+  fontFamily: FONTS.body,
+  fontSize: '1rem',
+  fontWeight: '500',
+  cursor: 'pointer',
+  padding: '0.25rem 0',
+};
 
 export default Nav;

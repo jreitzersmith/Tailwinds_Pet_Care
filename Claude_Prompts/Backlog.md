@@ -1,4 +1,4 @@
-﻿# TailwindsPetCare — Backlog
+# TailwindsPetCare — Backlog
 
 <!-- Last used numbers: Issue#0 · FR#16 · CQ#1 -->
 
@@ -40,11 +40,11 @@ On new entry: file a GitHub issue immediately. Record GH# and date:
 
 ### Phase 2 — Auth + Booking (deferred)
 
-- [ ] FR#9 (2026-06-18) — Supabase schema: customers, bookings, services, pets tables with RLS
-- [ ] FR#10 (2026-06-18) — Customer auth: signup, login, logout, password reset
-- [ ] FR#11 (2026-06-18) — Booking flow: service selection, date/time, pet details, confirmation
-- [ ] FR#12 (2026-06-18) — Customer portal: view/cancel bookings, history
-- [ ] FR#13 (2026-06-18) — Distance-based pricing auto-calculation from 2500 South Blvd
+- [x] FR#9 (2026-06-18) — Supabase schema: customers, bookings, services, pets tables with RLS
+- [x] FR#10 (2026-06-18) — Customer auth: signup, login, logout, password reset
+- [x] FR#11 (2026-06-18) — Booking flow: service selection, date/time, pet details, confirmation
+- [x] FR#12 (2026-06-18) — Customer portal: view/cancel bookings, history
+- [x] FR#13 (2026-06-18) — Distance-based pricing auto-calculation from 2500 South Blvd
 
 ### Phase 3 — Payments (deferred)
 
