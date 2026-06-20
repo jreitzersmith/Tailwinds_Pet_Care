@@ -1,6 +1,6 @@
 ﻿# TailwindsPetCare — Project Brief
 
-**Project path:** `C:\Programming_Projects\Tailswinds_Pet_Care\tailwindspetcare.com`
+**Project path:** `C:\Programming_Projects\Tailswinds_Pet_Care`
 **Domain:** tailwindspetcare.com
 **Business:** Tailwinds Pet Care, L.L.C — pet sitting and walking services targeting airline employees (Southwest, American Airlines) in the DFW area.
 **Owner:** John Reitzer-Smith
@@ -46,7 +46,7 @@
 
 **Fonts:** Lucida Bright (headers), Lucida Sans Unicode (body), Lucida Calligraphy (accent), Arial (fallback)
 
-**Logo:** `C:\Programming_Projects\Tailswinds_Pet_Care\Brand\Logos\Tailwinds_Logo.png` / `.svg`
+**Logo:** `C:\Programming_Projects\Tailswinds_Pet_Care\~Brand\Logos\Tailwinds_Logo.png` / `.svg`
 
 **Social:** Facebook, Instagram — include in Footer and Hero/CTA
 
@@ -137,7 +137,14 @@ Update `src/features/serviceArea/serviceAreaData.js` when fees change.
 
 **Cert:** HTTP-01 via certbot for `tailwindspetcare.com` and `www.tailwindspetcare.com`
 
-**Deploy:** `npx vite build --outDir /tmp/tailwinds-build --emptyOutDir` → `rsync` to server → `nginx -s reload`
+**Deploy:**
+```bash
+npx vite build --outDir /tmp/tailwinds-build --emptyOutDir
+rsync -az --delete --chmod=D755,F644 \
+  -e "ssh -i <path-to-key.pem>" \
+  /tmp/tailwinds-build/ ubuntu@3.134.160.32:/var/www/tailwindspetcare/
+```
+`--chmod=D755,F644` normalizes permissions on every deploy (prevents nginx read failures on files with restrictive source permissions).
 
 ---
 
