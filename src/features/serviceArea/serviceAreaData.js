@@ -1,12 +1,12 @@
 // Service area constants — single source of truth for zone definitions.
 // Base location: 2500 South Blvd, Dallas TX. Update CLAUDE.md when fees change.
 //
-// Zone polygons are loaded from Map_Coord/GeoZones_Current.json at build time.
+// Zone polygons are loaded from ~Map_Coord/GeoZones_Current.json at build time.
 // To regenerate zones from drive-time isochrones:
-//   1. python Map_Coord/generate_geo_zones.py
+//   1. python ~Map_Coord/generate_geo_zones.py
 //   2. npm run build
 
-import geoZonesData from '../../../../Map_Coord/GeoZones_Current.json';
+import geoZonesData from '../../../~Map_Coord/GeoZones_Current.json';
 
 export const BASE_COORDS = { lat: 32.7383, lng: -96.7952 };
 
