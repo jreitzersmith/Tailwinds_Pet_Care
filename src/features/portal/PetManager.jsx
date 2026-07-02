@@ -5,13 +5,23 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { COLORS, FONTS } from '../../constants.jsx';
 
 const SPECIES    = ['Dog', 'Cat', 'Bird', 'Reptile', 'Fish', 'Small Mammal', 'Other'];
-const DIET_TYPES = ['Kibble', 'Wet Food', 'Raw', 'Mixed', 'Other'];
+const DIET_TYPES = ['Kibble', 'Wet Food', 'Raw', 'Mixed', 'Treat', 'Bone/Rawhide', 'Other'];
 const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const BLANK_DIET_ENTRY = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
+const BLANK_WALK_ENTRY = { label: '', days: [], time: '', duration_minutes: '' };
 
 const BLANK = {
   name: '', species: 'Dog', breed: '', age_years: '', weight_lbs: '', notes: '',
-  diet: null, walking_schedule: null, medications: [], vaccinations: [],
+  diet: [], walking_schedule: [], medications: [], vaccinations: [],
 };
+
+/** Normalize: old single-object format → array; null/undefined → [] */
+function toArr(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return [val];
+}
 
 function petToForm(pet) {
   return {
@@ -21,24 +31,25 @@ function petToForm(pet) {
     age_years:  pet.age_years  ?? '',
     weight_lbs: pet.weight_lbs ?? '',
     notes:      pet.notes      ?? '',
-    diet:             pet.diet             ?? null,
-    walking_schedule: pet.walking_schedule ?? null,
-    medications:      Array.isArray(pet.medications)  ? pet.medications  : [],
-    vaccinations:     Array.isArray(pet.vaccinations) ? pet.vaccinations : [],
+    diet:             toArr(pet.diet),
+    walking_schedule: toArr(pet.walking_schedule),
+    medications:      toArr(pet.medications),
+    vaccinations:     toArr(pet.vaccinations),
   };
 }
 
-export default function PetManager() {
+// ─── PetManager ──────────────────────────────────────────────────────────────
+export default function PetManager({ onSelectTab }) {
   const { user } = useAuth();
   const [pets, setPets]           = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
-  const [editing, setEditing]     = useState(null);    // null | 'new' | pet.id
-  const [editingPet, setEditingPet] = useState(null);  // full pet record being edited
+  const [editing, setEditing]     = useState(null);
+  const [editingPet, setEditingPet] = useState(null);
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  useEffect(() => { fetchPets(); }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchPets(); }, [user.id]); // eslint-disable-line
 
   async function fetchPets() {
     setLoading(true);
@@ -48,13 +59,8 @@ export default function PetManager() {
     setLoading(false);
   }
 
-  function startAdd() {
-    setEditingPet(null); setEditing('new'); setSaveError(null);
-  }
-
-  function startEdit(pet) {
-    setEditingPet(pet); setEditing(pet.id); setSaveError(null);
-  }
+  function startAdd() { setEditingPet(null); setEditing('new'); setSaveError(null); }
+  function startEdit(pet) { setEditingPet(pet); setEditing(pet.id); setSaveError(null); }
 
   async function handleSave(form) {
     if (!form.name.trim()) { setSaveError('Name is required.'); return; }
@@ -67,10 +73,10 @@ export default function PetManager() {
       age_years:        form.age_years  ? parseFloat(form.age_years)  : null,
       weight_lbs:       form.weight_lbs ? parseFloat(form.weight_lbs) : null,
       notes:            form.notes      || null,
-      diet:             form.diet             ?? null,
-      walking_schedule: form.walking_schedule ?? null,
-      medications:      form.medications      || [],
-      vaccinations:     form.vaccinations     || [],
+      diet:             form.diet.length             ? form.diet             : null,
+      walking_schedule: form.walking_schedule.length ? form.walking_schedule : null,
+      medications:      form.medications,
+      vaccinations:     form.vaccinations,
     };
     let err;
     if (editing === 'new') {
@@ -94,119 +100,255 @@ export default function PetManager() {
 
   return (
     <div>
-      {pets.length === 0 && editing !== 'new' && (
-        <p style={st.empty}>No pets added yet.</p>
-      )}
+      {pets.length === 0 && editing !== 'new' && <p style={st.empty}>No pets added yet.</p>}
+
       {pets.map(pet => (
         <div key={pet.id} style={st.petRow}>
           {editing === pet.id ? (
             <PetForm initial={editingPet} onSave={handleSave}
               onCancel={() => { setEditing(null); setEditingPet(null); }}
-              saving={saving} error={saveError} />
+              saving={saving} error={saveError} petId={pet.id} userId={user.id} />
           ) : (
-            <PetCard pet={pet} onEdit={() => startEdit(pet)} onDelete={() => handleDelete(pet.id)} />
+            <PetCard pet={pet} onEdit={() => startEdit(pet)}
+              onDelete={() => handleDelete(pet.id)}
+              userId={user.id} onSelectTab={onSelectTab} />
           )}
         </div>
       ))}
+
       {editing === 'new' && (
         <div style={st.petRow}>
           <PetForm initial={null} onSave={handleSave}
             onCancel={() => setEditing(null)}
-            saving={saving} error={saveError} isNew />
+            saving={saving} error={saveError} isNew userId={user.id} />
         </div>
       )}
-      {editing !== 'new' && (
-        <button style={st.addBtn} onClick={startAdd}>+ Add a Pet</button>
-      )}
+      {editing !== 'new' && <button style={st.addBtn} onClick={startAdd}>+ Add a Pet</button>}
     </div>
   );
 }
 
+PetManager.propTypes = { onSelectTab: PropTypes.func };
+
 // ─── PetCard ─────────────────────────────────────────────────────────────────
-function PetCard({ pet, onEdit, onDelete }) {
-  const medCount  = Array.isArray(pet.medications)  ? pet.medications.length  : 0;
-  const vaccCount = Array.isArray(pet.vaccinations) ? pet.vaccinations.length : 0;
+function PetCard({ pet, onEdit, onDelete, userId, onSelectTab }) {
+  const [expanded, setExpanded] = useState(false);
+  const dietCount  = toArr(pet.diet).length;
+  const walkCount  = toArr(pet.walking_schedule).length;
+  const medCount   = toArr(pet.medications).length;
+  const vaccCount  = toArr(pet.vaccinations).length;
+
   return (
-    <div style={st.petInfo}>
-      <div>
-        <span style={st.petName}>{pet.name}</span>
-        <span style={st.petMeta}>
-          {pet.species}{pet.breed ? ` · ${pet.breed}` : ''}
-          {pet.age_years  ? ` · ${pet.age_years} yrs`  : ''}
-          {pet.weight_lbs ? ` · ${pet.weight_lbs} lbs` : ''}
-        </span>
-        {pet.notes && <span style={st.petNote}>{pet.notes}</span>}
-        {pet.diet && (
-          <span style={st.petNote}>
-            Diet: {pet.diet.type}
-            {pet.diet.frequency ? `, ${pet.diet.frequency}x/day` : ''}
-            {pet.diet.amount    ? `, ${pet.diet.amount}`         : ''}
+    <div>
+      <div style={st.petInfo}>
+        {/* Profile thumbnail */}
+        <div style={st.thumb}>
+          {pet.profile_image_url
+            ? <img src={pet.profile_image_url} style={st.thumbImg} alt={pet.name} />
+            : <span style={st.thumbIcon}>🐾</span>}
+        </div>
+
+        {/* Details */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={st.petName}>{pet.name}</span>
+          <span style={st.petMeta}>
+            {pet.species}{pet.breed ? ` · ${pet.breed}` : ''}
+            {pet.weight_lbs ? ` · ${pet.weight_lbs} lbs` : ''}
+            {pet.age_years  ? ` · ${pet.age_years} yrs`  : ''}
           </span>
-        )}
-        {medCount  > 0 && <span style={st.petNote}>{medCount} medication{medCount > 1 ? 's' : ''}</span>}
-        {vaccCount > 0 && <span style={st.petNote}>{vaccCount} vaccination record{vaccCount > 1 ? 's' : ''}</span>}
+          {pet.notes && <span style={st.petNote}>{pet.notes}</span>}
+          <div style={st.badgeRow}>
+            {dietCount  > 0 && <span style={st.badge}>{dietCount} feeding{dietCount > 1 ? 's' : ''}</span>}
+            {walkCount  > 0 && <span style={st.badge}>{walkCount} walk{walkCount > 1 ? 's' : ''}</span>}
+            {medCount   > 0 && <span style={st.badge}>{medCount} med{medCount > 1 ? 's' : ''}</span>}
+            {vaccCount  > 0 && <span style={st.badge}>{vaccCount} vacc{vaccCount > 1 ? 's' : ''}</span>}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={st.petActions}>
+          <button style={st.editBtn} onClick={onEdit}>Edit</button>
+          <button style={st.deleteBtn} onClick={onDelete}>Remove</button>
+          <button style={st.expandBtn} onClick={() => setExpanded(e => !e)}>
+            {expanded ? '▴' : '▾'}
+          </button>
+        </div>
       </div>
-      <div style={st.petActions}>
-        <button style={st.editBtn}   onClick={onEdit}>Edit</button>
-        <button style={st.deleteBtn} onClick={onDelete}>Remove</button>
-      </div>
+
+      {/* Expanded: photos + visits */}
+      {expanded && (
+        <div style={st.expandedWrap}>
+          <PhotoAlbumShell petId={pet.id} />
+          <PastVisits petId={pet.id} onSelectTab={onSelectTab} />
+        </div>
+      )}
     </div>
   );
 }
 PetCard.propTypes = {
-  pet: PropTypes.object.isRequired, onEdit: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired,
+  pet: PropTypes.object.isRequired, onEdit: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired, userId: PropTypes.string.isRequired,
+  onSelectTab: PropTypes.func,
 };
 
+// ─── PhotoAlbumShell ─────────────────────────────────────────────────────────
+// Display only — upload is reserved for a future sitter admin view.
+function PhotoAlbumShell({ petId }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.from('pet_photos').select('*').eq('pet_id', petId)
+      .order('uploaded_at', { ascending: false })
+      .then(({ data }) => { setPhotos(data || []); setLoading(false); });
+  }, [petId]);
+
+  return (
+    <div style={st.albumSection}>
+      <h4 style={st.sectionHead}>Photos</h4>
+      {loading ? <p style={st.dimText}>Loading…</p> : photos.length === 0 ? (
+        <p style={st.dimText}>Photos from your sitter will appear here after visits.</p>
+      ) : (
+        <div style={st.photoGrid}>
+          {photos.map(p => (
+            <img key={p.id} src={p.url} style={st.photoThumb} alt={p.caption || 'Visit photo'} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+PhotoAlbumShell.propTypes = { petId: PropTypes.string.isRequired };
+
+// ─── PastVisits ──────────────────────────────────────────────────────────────
+function PastVisits({ petId, onSelectTab }) {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    supabase.from('bookings')
+      .select('id, booking_date, status, services(name)')
+      .eq('pet_id', petId)
+      .order('booking_date', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { setBookings(data || []); setLoading(false); });
+  }, [petId]);
+
+  function goToBooking(bookingDate) {
+    if (!onSelectTab) return;
+    const isPast = new Date(bookingDate) < new Date();
+    onSelectTab(isPast ? 1 : 0);
+  }
+
+  return (
+    <div style={st.visitsSection}>
+      <h4 style={st.sectionHead}>Visits</h4>
+      {loading ? <p style={st.dimText}>Loading…</p> : bookings.length === 0 ? (
+        <p style={st.dimText}>No bookings for this pet yet.</p>
+      ) : (
+        <div>
+          {bookings.map(b => (
+            <div key={b.id} style={st.visitRow}>
+              <span style={st.visitDate}>{b.booking_date}</span>
+              <span style={st.visitService}>{b.services?.name ?? '—'}</span>
+              <span style={{ ...st.visitStatus, color: statusColor(b.status) }}>{b.status}</span>
+              <button style={st.visitLink} onClick={() => goToBooking(b.booking_date)}>
+                View →
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+PastVisits.propTypes = { petId: PropTypes.string.isRequired, onSelectTab: PropTypes.func };
+
+function statusColor(s) {
+  return s === 'completed' ? '#2a7a3b' : s === 'cancelled' ? COLORS.red
+    : s === 'confirmed' ? COLORS.blue : '#888';
+}
+
 // ─── PetForm ─────────────────────────────────────────────────────────────────
-function PetForm({ initial, onSave, onCancel, saving, error, isNew }) {
+function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userId }) {
   const [form, setForm]       = useState(() => initial ? petToForm(initial) : { ...BLANK });
-  const [dietOpen, setDietOpen]   = useState(!!initial?.diet);
-  const [walkOpen, setWalkOpen]   = useState(!!initial?.walking_schedule);
-  const [medsOpen, setMedsOpen]   = useState((initial?.medications?.length ?? 0) > 0);
-  const [vaccsOpen, setVaccsOpen] = useState((initial?.vaccinations?.length ?? 0) > 0);
+  const [profileUrl, setProfileUrl]   = useState(initial?.profile_image_url ?? null);
+  const [uploading, setUploading]     = useState(false);
+  const [uploadErr, setUploadErr]     = useState(null);
+  const [medsOpen, setMedsOpen]       = useState(toArr(initial?.medications).length > 0);
+  const [vaccsOpen, setVaccsOpen]     = useState(toArr(initial?.vaccinations).length > 0);
 
   function set(field, val) { setForm(p => ({ ...p, [field]: val })); }
 
-  function setDiet(field, val) {
-    setForm(p => ({ ...p, diet: { ...(p.diet ?? { type: 'Kibble', frequency: '', amount: '' }), [field]: val } }));
-  }
-  function setWalk(field, val) {
-    setForm(p => ({ ...p, walking_schedule: { ...(p.walking_schedule ?? { days: [], time: '', duration_minutes: '' }), [field]: val } }));
-  }
-  function toggleDay(day) {
-    const days = form.walking_schedule?.days ?? [];
-    setWalk('days', days.includes(day) ? days.filter(d => d !== day) : [...days, day]);
+  // ── Diet ──────────────────────────────────────────────────────────────────
+  function addDiet()            { setForm(p => ({ ...p, diet: [...p.diet, { ...BLANK_DIET_ENTRY }] })); }
+  function removeDiet(i)        { setForm(p => ({ ...p, diet: p.diet.filter((_, x) => x !== i) })); }
+  function setDiet(i, field, v) {
+    setForm(p => { const d = [...p.diet]; d[i] = { ...d[i], [field]: v }; return { ...p, diet: d }; });
   }
 
-  function toggleDiet() {
-    if (dietOpen) { setDietOpen(false); setForm(p => ({ ...p, diet: null })); }
-    else {
-      setDietOpen(true);
-      if (!form.diet) setForm(p => ({ ...p, diet: { type: 'Kibble', frequency: '', amount: '' } }));
-    }
+  // ── Walking ───────────────────────────────────────────────────────────────
+  function addWalk()            { setForm(p => ({ ...p, walking_schedule: [...p.walking_schedule, { ...BLANK_WALK_ENTRY }] })); }
+  function removeWalk(i)        { setForm(p => ({ ...p, walking_schedule: p.walking_schedule.filter((_, x) => x !== i) })); }
+  function setWalk(i, field, v) {
+    setForm(p => { const w = [...p.walking_schedule]; w[i] = { ...w[i], [field]: v }; return { ...p, walking_schedule: w }; });
   }
-  function toggleWalk() {
-    if (walkOpen) { setWalkOpen(false); setForm(p => ({ ...p, walking_schedule: null })); }
-    else {
-      setWalkOpen(true);
-      if (!form.walking_schedule) setForm(p => ({ ...p, walking_schedule: { days: [], time: '', duration_minutes: '' } }));
-    }
+  function toggleWalkDay(i, day) {
+    const days = form.walking_schedule[i]?.days ?? [];
+    setWalk(i, 'days', days.includes(day) ? days.filter(d => d !== day) : [...days, day]);
   }
 
-  function addMed()  { setMedsOpen(true);  setForm(p => ({ ...p, medications:  [...p.medications,  { name: '', dose: '', frequency: '' }] })); }
-  function addVacc() { setVaccsOpen(true); setForm(p => ({ ...p, vaccinations: [...p.vaccinations, { vaccine: '', date_given: '', next_due: '' }] })); }
+  // ── Medications ───────────────────────────────────────────────────────────
+  function addMed()             { setMedsOpen(true); setForm(p => ({ ...p, medications: [...p.medications, { name: '', dose: '', frequency: '' }] })); }
+  function removeMed(i)         { setForm(p => ({ ...p, medications: p.medications.filter((_, x) => x !== i) })); }
+  function setMed(i, field, v)  { setForm(p => { const m = [...p.medications]; m[i] = { ...m[i], [field]: v }; return { ...p, medications: m }; }); }
 
-  function setMed(i, f, v)  { setForm(p => { const a = [...p.medications];  a[i] = { ...a[i], [f]: v }; return { ...p, medications:  a }; }); }
-  function setVacc(i, f, v) { setForm(p => { const a = [...p.vaccinations]; a[i] = { ...a[i], [f]: v }; return { ...p, vaccinations: a }; }); }
-  function removeMed(i)   { setForm(p => ({ ...p, medications:  p.medications.filter((_, x) => x !== i) })); }
-  function removeVacc(i)  { setForm(p => ({ ...p, vaccinations: p.vaccinations.filter((_, x) => x !== i) })); }
+  // ── Vaccinations ──────────────────────────────────────────────────────────
+  function addVacc()             { setVaccsOpen(true); setForm(p => ({ ...p, vaccinations: [...p.vaccinations, { vaccine: '', date_given: '', next_due: '' }] })); }
+  function removeVacc(i)         { setForm(p => ({ ...p, vaccinations: p.vaccinations.filter((_, x) => x !== i) })); }
+  function setVacc(i, field, v)  { setForm(p => { const v2 = [...p.vaccinations]; v2[i] = { ...v2[i], [field]: v }; return { ...p, vaccinations: v2 }; }); }
+
+  // ── Profile image upload ──────────────────────────────────────────────────
+  async function handleProfileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file || !petId) return;
+    setUploading(true); setUploadErr(null);
+    const ext  = file.name.split('.').pop().toLowerCase();
+    const path = `${userId}/${petId}/profile.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('pet-photos').upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) { setUploadErr(upErr.message); setUploading(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from('pet-photos').getPublicUrl(path);
+    await supabase.from('pets').update({ profile_image_url: publicUrl }).eq('id', petId);
+    setProfileUrl(publicUrl);
+    setUploading(false);
+  }
 
   return (
     <div>
       <h3 style={st.formHead}>{isNew ? 'New Pet' : 'Edit Pet'}</h3>
       {error && <p style={st.formErr}>{error}</p>}
 
-      {/* Required / basic fields */}
+      {/* Profile image — edit mode only (pet must exist to have an ID) */}
+      {!isNew && petId && (
+        <div style={st.profileRow}>
+          <div style={st.profileThumb}>
+            {profileUrl
+              ? <img src={profileUrl} style={st.profileImg} alt='Profile' />
+              : <span style={st.profileIcon}>🐾</span>}
+          </div>
+          <div>
+            <label style={st.uploadBtn}>
+              {uploading ? 'Uploading…' : profileUrl ? 'Change Photo' : 'Add Profile Photo'}
+              <input type='file' accept='image/*' onChange={handleProfileUpload}
+                disabled={uploading} style={{ display: 'none' }} />
+            </label>
+            {uploadErr && <p style={st.formErr}>{uploadErr}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Basic required fields */}
       <div style={st.formGrid}>
         <label style={st.label}>Name *
           <input style={st.input} type='text' value={form.name} onChange={e => set('name', e.target.value)} />
@@ -231,65 +373,41 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew }) {
         </label>
       </div>
 
-      {/* ── Optional sections ── */}
+      {/* Optional sections */}
       <div style={st.optWrap}>
 
-        {/* Diet & Feeding */}
+        {/* Feeding Schedule */}
         <div style={st.optSection}>
-          <button style={st.optToggle} onClick={toggleDiet}>
-            {dietOpen ? '▾' : '▸'} Diet &amp; Feeding
-          </button>
-          {dietOpen && form.diet && (
-            <div style={st.optBody}>
-              <div style={st.row3}>
-                <label style={st.label}>Food Type
-                  <select style={st.input} value={form.diet.type} onChange={e => setDiet('type', e.target.value)}>
-                    {DIET_TYPES.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </label>
-                <label style={st.label}>Meals / Day
-                  <input style={st.input} type='number' min='1' max='10' value={form.diet.frequency}
-                    onChange={e => setDiet('frequency', e.target.value)} />
-                </label>
-                <label style={st.label}>Amount per Meal
-                  <input style={st.input} type='text' value={form.diet.amount}
-                    onChange={e => setDiet('amount', e.target.value)} placeholder='1 cup' />
-                </label>
-              </div>
-            </div>
+          <div style={st.optHeaderRow}>
+            <span style={st.optTitle}>
+              Feeding Schedule
+              {form.diet.length > 0 && <span style={st.badge}>{form.diet.length}</span>}
+            </span>
+            <button style={st.addItemBtn} onClick={addDiet}>+ Add Feeding</button>
+          </div>
+          {form.diet.map((entry, i) => (
+            <DietEntry key={i} entry={entry} index={i} onChange={setDiet} onRemove={removeDiet} />
+          ))}
+          {form.diet.length === 0 && (
+            <p style={st.dimText}>No feedings added. Click &quot;+ Add Feeding&quot; to build a daily schedule.</p>
           )}
         </div>
 
         {/* Walking Schedule */}
         <div style={st.optSection}>
-          <button style={st.optToggle} onClick={toggleWalk}>
-            {walkOpen ? '▾' : '▸'} Walking Schedule
-          </button>
-          {walkOpen && form.walking_schedule && (
-            <div style={st.optBody}>
-              <div style={{ marginBottom: '0.6rem' }}>
-                <span style={st.microLabel}>Days</span>
-                <div style={st.daysRow}>
-                  {DAYS.map(d => (
-                    <button key={d} type='button'
-                      style={{ ...st.dayBtn, ...(form.walking_schedule.days?.includes(d) ? st.dayBtnOn : {}) }}
-                      onClick={() => toggleDay(d)}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={st.row2}>
-                <label style={st.label}>Preferred Time
-                  <input style={st.input} type='time' value={form.walking_schedule.time}
-                    onChange={e => setWalk('time', e.target.value)} />
-                </label>
-                <label style={st.label}>Duration (min)
-                  <input style={st.input} type='number' min='5' value={form.walking_schedule.duration_minutes}
-                    onChange={e => setWalk('duration_minutes', e.target.value)} />
-                </label>
-              </div>
-            </div>
+          <div style={st.optHeaderRow}>
+            <span style={st.optTitle}>
+              Walking Schedule
+              {form.walking_schedule.length > 0 && <span style={st.badge}>{form.walking_schedule.length}</span>}
+            </span>
+            <button style={st.addItemBtn} onClick={addWalk}>+ Add Walk</button>
+          </div>
+          {form.walking_schedule.map((entry, i) => (
+            <WalkEntry key={i} entry={entry} index={i}
+              onChange={setWalk} onRemove={removeWalk} onToggleDay={toggleWalkDay} />
+          ))}
+          {form.walking_schedule.length === 0 && (
+            <p style={st.dimText}>No walks added. Click &quot;+ Add Walk&quot; to add a morning, evening, etc.</p>
           )}
         </div>
 
@@ -366,90 +484,189 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew }) {
 }
 
 PetForm.propTypes = {
-  initial:  PropTypes.object,
-  onSave:   PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-  saving:   PropTypes.bool,
-  error:    PropTypes.string,
-  isNew:    PropTypes.bool,
+  initial: PropTypes.object, onSave: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired, saving: PropTypes.bool, error: PropTypes.string,
+  isNew: PropTypes.bool, petId: PropTypes.string, userId: PropTypes.string,
+};
+
+// ─── DietEntry ────────────────────────────────────────────────────────────────
+function DietEntry({ entry, index, onChange, onRemove }) {
+  return (
+    <div style={st.listItem}>
+      <div style={st.row4}>
+        <label style={st.label}>Meal Label
+          <input style={st.input} type='text' value={entry.label}
+            onChange={e => onChange(index, 'label', e.target.value)}
+            placeholder='Breakfast, Dinner, Treat time…' />
+        </label>
+        <label style={st.label}>Food Type
+          <select style={st.input} value={entry.type}
+            onChange={e => onChange(index, 'type', e.target.value)}>
+            {DIET_TYPES.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </label>
+        <label style={st.label}>Time
+          <input style={st.input} type='time' value={entry.time}
+            onChange={e => onChange(index, 'time', e.target.value)} />
+        </label>
+        <label style={st.label}>Amount
+          <input style={st.input} type='text' value={entry.amount}
+            onChange={e => onChange(index, 'amount', e.target.value)}
+            placeholder='1 cup, 1 can…' />
+        </label>
+      </div>
+      {entry.type === 'Other' && (
+        <label style={{ ...st.label, marginTop: '0.4rem' }}>Description
+          <input style={st.input} type='text' value={entry.notes}
+            onChange={e => onChange(index, 'notes', e.target.value)}
+            placeholder='Describe the food or any special instructions…' />
+        </label>
+      )}
+      <button style={st.removeBtn} onClick={() => onRemove(index)}>Remove</button>
+    </div>
+  );
+}
+DietEntry.propTypes = {
+  entry: PropTypes.object.isRequired, index: PropTypes.number.isRequired,
+  onChange: PropTypes.func.isRequired, onRemove: PropTypes.func.isRequired,
+};
+
+// ─── WalkEntry ────────────────────────────────────────────────────────────────
+function WalkEntry({ entry, index, onChange, onRemove, onToggleDay }) {
+  return (
+    <div style={st.listItem}>
+      <div style={st.row3}>
+        <label style={st.label}>Walk Label
+          <input style={st.input} type='text' value={entry.label}
+            onChange={e => onChange(index, 'label', e.target.value)}
+            placeholder='Morning, Evening…' />
+        </label>
+        <label style={st.label}>Time
+          <input style={st.input} type='time' value={entry.time}
+            onChange={e => onChange(index, 'time', e.target.value)} />
+        </label>
+        <label style={st.label}>Duration (min)
+          <input style={st.input} type='number' min='5' value={entry.duration_minutes}
+            onChange={e => onChange(index, 'duration_minutes', e.target.value)} />
+        </label>
+      </div>
+      <div style={{ marginBottom: '0.4rem' }}>
+        <span style={st.microLabel}>Days</span>
+        <div style={st.daysRow}>
+          {DAYS.map(d => (
+            <button key={d} type='button'
+              style={{ ...st.dayBtn, ...(entry.days?.includes(d) ? st.dayBtnOn : {}) }}
+              onClick={() => onToggleDay(index, d)}>
+              {d}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button style={st.removeBtn} onClick={() => onRemove(index)}>Remove</button>
+    </div>
+  );
+}
+WalkEntry.propTypes = {
+  entry: PropTypes.object.isRequired, index: PropTypes.number.isRequired,
+  onChange: PropTypes.func.isRequired, onRemove: PropTypes.func.isRequired,
+  onToggleDay: PropTypes.func.isRequired,
 };
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const st = {
-  msg:   { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
-  error: { fontFamily: FONTS.body, color: COLORS.red, padding: '1rem' },
-  empty: { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
+  msg:    { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
+  error:  { fontFamily: FONTS.body, color: COLORS.red, padding: '1rem' },
+  empty:  { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
   petRow: {
     border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
     padding: '1rem 1.25rem', marginBottom: '0.75rem', background: COLORS.white,
   },
-  petInfo:    { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' },
+  petInfo:    { display: 'flex', alignItems: 'flex-start', gap: '0.75rem' },
+  thumb:      {
+    width: '44px', height: '44px', borderRadius: '50%', flexShrink: 0,
+    background: '#e8f4fc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', border: `1px solid ${COLORS.lightBlue}`,
+  },
+  thumbImg:   { width: '100%', height: '100%', objectFit: 'cover' },
+  thumbIcon:  { fontSize: '1.3rem' },
   petName:    { display: 'block', fontFamily: FONTS.body, fontWeight: '600', color: COLORS.black },
   petMeta:    { display: 'block', fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
-  petNote:    { display: 'block', fontFamily: FONTS.body, fontSize: '0.8rem', color: '#777', marginTop: '0.2rem' },
-  petActions: { display: 'flex', gap: '0.5rem' },
+  petNote:    { display: 'block', fontFamily: FONTS.body, fontSize: '0.8rem', color: '#777', marginTop: '0.15rem' },
+  badgeRow:   { display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.35rem' },
+  badge: {
+    display: 'inline-block', background: '#e8f4fc', color: COLORS.blue,
+    fontFamily: FONTS.body, fontSize: '0.72rem', borderRadius: '10px',
+    padding: '0.1rem 0.5rem',
+  },
+  petActions: { display: 'flex', gap: '0.4rem', marginLeft: 'auto', flexShrink: 0 },
   editBtn: {
-    padding: '0.35rem 0.75rem', background: COLORS.white, border: `1px solid ${COLORS.blue}`,
-    color: COLORS.blue, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem',
+    padding: '0.3rem 0.65rem', background: COLORS.white, border: `1px solid ${COLORS.blue}`,
+    color: COLORS.blue, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.82rem',
   },
   deleteBtn: {
-    padding: '0.35rem 0.75rem', background: COLORS.white, border: `1px solid ${COLORS.red}`,
-    color: COLORS.red, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem',
+    padding: '0.3rem 0.65rem', background: COLORS.white, border: `1px solid ${COLORS.red}`,
+    color: COLORS.red, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.82rem',
+  },
+  expandBtn: {
+    padding: '0.3rem 0.5rem', background: 'none', border: `1px solid #dde8f4`,
+    color: COLORS.lightBlue, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem',
   },
   addBtn: {
     marginTop: '0.5rem', background: 'none', border: 'none', color: COLORS.blue,
     fontFamily: FONTS.body, fontSize: '0.95rem', cursor: 'pointer', padding: '0.5rem 0',
   },
+  expandedWrap: {
+    marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #eef3fa',
+    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem',
+  },
+  albumSection: {},
+  visitsSection: {},
+  sectionHead: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '0.9rem', marginBottom: '0.5rem' },
+  dimText:    { fontFamily: FONTS.body, fontSize: '0.82rem', color: '#aaa', fontStyle: 'italic' },
+  photoGrid:  { display: 'flex', flexWrap: 'wrap', gap: '0.4rem' },
+  photoThumb: { width: '72px', height: '72px', objectFit: 'cover', borderRadius: '6px', border: `1px solid #dde8f4` },
+  visitRow:   { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0', borderBottom: '1px solid #f0f4fa' },
+  visitDate:    { fontFamily: FONTS.body, fontSize: '0.8rem', color: '#555', minWidth: '90px' },
+  visitService: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.black, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  visitStatus:  { fontFamily: FONTS.body, fontSize: '0.75rem', fontWeight: '600' },
+  visitLink: {
+    background: 'none', border: 'none', color: COLORS.blue, cursor: 'pointer',
+    fontFamily: FONTS.body, fontSize: '0.78rem', padding: 0, flexShrink: 0,
+  },
+  // Form styles
   formHead: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', marginBottom: '0.75rem' },
   formErr:  { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.9rem', marginBottom: '0.5rem' },
+  profileRow: { display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', padding: '0.75rem', background: '#f8fbff', borderRadius: '8px' },
+  profileThumb: {
+    width: '60px', height: '60px', borderRadius: '50%', background: '#e8f4fc',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    border: `2px solid ${COLORS.lightBlue}`, flexShrink: 0,
+  },
+  profileImg:  { width: '100%', height: '100%', objectFit: 'cover' },
+  profileIcon: { fontSize: '1.6rem' },
+  uploadBtn: {
+    display: 'inline-block', padding: '0.4rem 0.9rem', background: COLORS.white,
+    border: `1px solid ${COLORS.blue}`, color: COLORS.blue, borderRadius: '6px',
+    cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem',
+  },
   formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.75rem' },
-  label: {
-    display: 'flex', flexDirection: 'column', gap: '0.3rem',
-    fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black,
-  },
-  input: {
-    padding: '0.5rem 0.7rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none', fontFamily: FONTS.body,
-  },
+  label:    { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black },
+  input:    { padding: '0.5rem 0.7rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none', fontFamily: FONTS.body },
   formActions: { display: 'flex', gap: '0.75rem', marginTop: '1rem' },
-  saveBtn: {
-    padding: '0.5rem 1.5rem', background: COLORS.blue, color: COLORS.white,
-    border: 'none', borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body,
-  },
-  cancelBtn: {
-    padding: '0.5rem 1rem', background: COLORS.white, color: COLORS.lightBlue,
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body,
-  },
-  optWrap:   { borderTop: '1px solid #eef3fa', paddingTop: '0.75rem', marginTop: '0.5rem' },
-  optSection: { marginBottom: '0.5rem' },
-  optToggle: {
-    background: 'none', border: 'none', color: COLORS.blue, fontFamily: FONTS.body,
-    fontSize: '0.875rem', cursor: 'pointer', padding: '0.4rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem',
-  },
-  optHeaderRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  addItemBtn: {
-    background: 'none', border: `1px solid ${COLORS.blue}`, color: COLORS.blue,
-    fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', borderRadius: '5px',
-    padding: '0.2rem 0.6rem',
-  },
-  optBody:  { paddingLeft: '1rem', paddingBottom: '0.5rem' },
-  row3:     { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
-  row2:     { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' },
+  saveBtn: { padding: '0.5rem 1.5rem', background: COLORS.blue, color: COLORS.white, border: 'none', borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body },
+  cancelBtn: { padding: '0.5rem 1rem', background: COLORS.white, color: COLORS.lightBlue, border: `1px solid ${COLORS.lightBlue}`, borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body },
+  optWrap:     { borderTop: '1px solid #eef3fa', paddingTop: '0.75rem', marginTop: '0.5rem' },
+  optSection:  { marginBottom: '0.75rem' },
+  optHeaderRow:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' },
+  optTitle: { fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.35rem' },
+  optToggle: { background: 'none', border: 'none', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.875rem', cursor: 'pointer', padding: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' },
+  addItemBtn: { background: 'none', border: `1px solid ${COLORS.blue}`, color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', borderRadius: '5px', padding: '0.2rem 0.6rem' },
+  listItem:  { background: '#f8fbff', borderRadius: '6px', padding: '0.6rem 0.75rem', marginBottom: '0.4rem' },
+  row4:      { display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.8fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
+  row3:      { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
   microLabel: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.black, display: 'block', marginBottom: '0.3rem' },
-  daysRow:  { display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.6rem' },
-  dayBtn:   {
-    padding: '0.25rem 0.5rem', border: `1px solid ${COLORS.lightBlue}`, borderRadius: '4px',
-    background: COLORS.white, color: COLORS.lightBlue, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer',
-  },
-  dayBtnOn: { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue },
-  listItem: { background: '#f8fbff', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '0.4rem' },
-  removeBtn: {
-    background: 'none', border: 'none', color: COLORS.red, fontFamily: FONTS.body,
-    fontSize: '0.8rem', cursor: 'pointer', padding: '0.2rem 0',
-  },
-  badge: {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    background: COLORS.blue, color: COLORS.white, borderRadius: '50%',
-    width: '16px', height: '16px', fontSize: '0.7rem', fontFamily: FONTS.body, marginLeft: '0.3rem',
-  },
+  daysRow:   { display: 'flex', gap: '0.3rem', flexWrap: 'wrap' },
+  dayBtn:    { padding: '0.2rem 0.45rem', border: `1px solid ${COLORS.lightBlue}`, borderRadius: '4px', background: COLORS.white, color: COLORS.lightBlue, fontFamily: FONTS.body, fontSize: '0.77rem', cursor: 'pointer' },
+  dayBtnOn:  { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue },
+  removeBtn: { background: 'none', border: 'none', color: COLORS.red, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', padding: '0.2rem 0', marginTop: '0.3rem' },
 };

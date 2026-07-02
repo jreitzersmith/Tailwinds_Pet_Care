@@ -127,7 +127,7 @@ export default function GuidedSetup({ onComplete }) {
                 placeholder='Buddy'
               />
             </label>
-            <div style={s.row3}>
+            <div style={s.row2}>
               <label style={s.label}>Species
                 <select style={s.input} value={pet.species}
                   onChange={e => setPet(p => ({ ...p, species: e.target.value }))}>
@@ -140,11 +140,11 @@ export default function GuidedSetup({ onComplete }) {
                   placeholder='Golden Retriever'
                 />
               </label>
-              <label style={s.label}>Weight (lbs)
-                <input style={s.input} type='number' min='0' value={pet.weight_lbs}
-                  onChange={e => setPet(p => ({ ...p, weight_lbs: e.target.value }))} />
-              </label>
             </div>
+            <label style={s.label}>Weight (lbs)
+              <input style={s.input} type='number' min='0' value={pet.weight_lbs}
+                onChange={e => setPet(p => ({ ...p, weight_lbs: e.target.value }))} />
+            </label>
             <div style={s.btnRow}>
               <button style={s.primaryBtn} onClick={handlePetNext} disabled={busy}>
                 {busy ? 'Saving…' : 'Save & Continue'}
@@ -210,7 +210,7 @@ const s = {
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
     outline: 'none', fontFamily: FONTS.body,
   },
-  row3:    { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' },
+  row2:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' },
   btnRow:  { display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' },
   primaryBtn: {
     padding: '0.65rem 1.75rem', background: COLORS.blue, color: COLORS.white,

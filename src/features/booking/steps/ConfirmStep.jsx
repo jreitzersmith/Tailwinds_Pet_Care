@@ -42,6 +42,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
   const [priceError, setPriceError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [usingsSaved, setUsingSaved] = useState(false); // true when address came from profile
 
   // Auto-lookup whenever the user finishes typing the address (on blur)
   const resolvePrice = useCallback(async () => {
@@ -61,11 +62,30 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
     }
   }, [addrInput, form.basePrice, update]);
 
-  // Resolve on mount if address already filled
+  // Pre-fill address from saved customer profile, then auto-resolve price
   useEffect(() => {
-    if (form.address) resolvePrice();
+    async function prefill() {
+      if (form.address) {
+        resolvePrice();
+        return;
+      }
+      const { data } = await supabase
+        .from('customers').select('address').eq('id', user.id).single();
+      if (data?.address) {
+        setAddrInput(data.address);
+        update({ address: data.address });
+        setUsingSaved(true);
+      }
+    }
+    prefill();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-resolve price after prefill sets addrInput
+  useEffect(() => {
+    if (usingsSaved && addrInput.trim()) resolvePrice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usingsSaved]);
 
   async function handleSubmit() {
     if (!pricing) { setPriceError('Please enter your address to calculate the travel fee.'); return; }
@@ -127,6 +147,9 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
       </div>
 
       <div style={styles.addrSection}>
+        {usingsSaved && (
+          <p style={styles.savedNote}>Using your saved service address — update below to use a different location.</p>
+        )}
         <label style={styles.label}>Your service address
           <input style={styles.input} type='text'
             placeholder='123 Main St, Dallas, TX 75201'
@@ -209,6 +232,7 @@ const styles = {
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none',
     resize: 'vertical', fontFamily: FONTS.body,
   },
+  savedNote:  { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.lightBlue, marginBottom: '0.4rem', fontStyle: 'italic' },
   note:       { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
   errorMsg:   { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.9rem', marginBottom: '0.75rem' },
   pricingBox: {

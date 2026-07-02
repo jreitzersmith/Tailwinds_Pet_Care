@@ -54,7 +54,7 @@ export default function PortalPage() {
       <div style={styles.content}>
         {tab === 0 && <BookingsList filter='upcoming' />}
         {tab === 1 && <BookingsList filter='past' />}
-        {tab === 2 && <PetManager />}
+        {tab === 2 && <PetManager onSelectTab={setTab} />}
         {tab === 3 && <AccountSettings />}
       </div>
     </div>

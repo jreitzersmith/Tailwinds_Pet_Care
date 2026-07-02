@@ -51,3 +51,35 @@ Format: `| Date | ID | Description | Commit |`
 - Fixed bottom-right panel with per-step guidance text for all 4 booking steps
 - Minimizable; dismiss via X or Finish Tutorial button
 - BookingPage.jsx: useSearchParams reads ?tutorial=true; passes currentStep to overlay
+
+## 2026-07-02 — Bug fixes + enhanced pet form (diet schedule, walk schedule, profile image, visit links)
+
+### Migration 003 — pet_photos.sql
+- ALTER pets: added profile_image_url text
+- CREATE TABLE pet_photos: id, pet_id, booking_id (nullable), storage_path, url, caption, uploaded_at
+- RLS: customers can select/insert/delete photos for their own pets
+- Supabase Storage: created 'pet-photos' public bucket with owner-scoped upload/update/delete policies
+- Storage path convention: {user_id}/{pet_id}/profile.{ext} (profile), {user_id}/{pet_id}/{ts}.{ext} (visits)
+
+### GuidedSetup.jsx — layout fix
+- Replaced 3-column Species/Breed/Weight grid with 2-column (Species + Breed) + full-width Weight
+- Fields no longer overflow the 480px modal on standard viewports
+
+### ConfirmStep.jsx — pre-populate service address
+- On mount, fetches customers.address from Supabase if booking form address is empty
+- Shows "Using your saved service address" italic note when pre-populated
+- Auto-triggers travel fee price resolution after prefill
+
+### PetManager.jsx — full rewrite
+- Diet: changed from single object to array of feeding entries (label / type / time / amount / notes)
+  * New types: Treat, Bone/Rawhide; Other type shows notes explanation field
+  * + Add Feeding button; each entry removable
+- Walking: changed from single object to array of walk entries (label / days / time / duration)
+  * + Add Walk button (Morning, Evening, etc.); each entry removable
+  * Day checkboxes per walk entry
+- Profile image upload (edit mode only): uploads to pet-photos bucket at {user}/{pet}/profile.ext, updates pets.profile_image_url
+- PetCard: shows profile thumbnail (or paw icon), badge counts for diet/walk/med/vacc, expand toggle
+- Expanded PetCard: photo album shell (display only — upload deferred to future sitter admin view), past visits list
+- Past visits: queries bookings for pet_id, shows date/service/status, View link switches portal to correct tab
+- PortalPage: passes onSelectTab={setTab} into PetManager so PetCard can navigate to Bookings tab
+- toArr() helper normalizes legacy single-object diet/walking_schedule to array for backward compat
