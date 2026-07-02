@@ -10,10 +10,11 @@ const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const BLANK_DIET_ENTRY = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
 const BLANK_WALK_ENTRY = { label: '', days: [], time: '', duration_minutes: '' };
+const BLANK_VACC_ENTRY = { vaccine: '', date_given: '', next_due: '', record_url: '', record_name: '' };
 
 const BLANK = {
   name: '', species: 'Dog', breed: '', age_years: '', weight_lbs: '', notes: '',
-  diet: [], walking_schedule: [], medications: [], vaccinations: [],
+  free_fed: false, diet: [], walking_schedule: [], medications: [], vaccinations: [],
 };
 
 /** Normalize: old single-object format → array; null/undefined → [] */
@@ -24,6 +25,8 @@ function toArr(val) {
 }
 
 function petToForm(pet) {
+  const rawDiet = pet.diet;
+  const freeFed = rawDiet && !Array.isArray(rawDiet) && rawDiet.free_fed === true;
   return {
     name:       pet.name,
     species:    pet.species,
@@ -31,7 +34,8 @@ function petToForm(pet) {
     age_years:  pet.age_years  ?? '',
     weight_lbs: pet.weight_lbs ?? '',
     notes:      pet.notes      ?? '',
-    diet:             toArr(pet.diet),
+    free_fed:         freeFed,
+    diet:             freeFed ? [] : toArr(rawDiet),
     walking_schedule: toArr(pet.walking_schedule),
     medications:      toArr(pet.medications),
     vaccinations:     toArr(pet.vaccinations),
@@ -73,7 +77,7 @@ export default function PetManager({ onSelectTab }) {
       age_years:        form.age_years  ? parseFloat(form.age_years)  : null,
       weight_lbs:       form.weight_lbs ? parseFloat(form.weight_lbs) : null,
       notes:            form.notes      || null,
-      diet:             form.diet.length             ? form.diet             : null,
+      diet:             form.free_fed ? { free_fed: true } : form.diet.length ? form.diet : null,
       walking_schedule: form.walking_schedule.length ? form.walking_schedule : null,
       medications:      form.medications,
       vaccinations:     form.vaccinations,
@@ -275,20 +279,25 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   const [profileUrl, setProfileUrl]   = useState(initial?.profile_image_url ?? null);
   const [uploading, setUploading]     = useState(false);
   const [uploadErr, setUploadErr]     = useState(null);
+  const [dietOpen, setDietOpen]       = useState(toArr(initial?.diet).length > 0 || (initial?.diet?.free_fed === true));
+  const [walkOpen, setWalkOpen]       = useState(toArr(initial?.walking_schedule).length > 0);
   const [medsOpen, setMedsOpen]       = useState(toArr(initial?.medications).length > 0);
   const [vaccsOpen, setVaccsOpen]     = useState(toArr(initial?.vaccinations).length > 0);
+  const [freeFed, setFreeFed]         = useState(initial?.diet?.free_fed === true || false);
+  const [vaccUploading, setVaccUploading] = useState({});
+  const [vaccUploadErr, setVaccUploadErr] = useState({});
 
   function set(field, val) { setForm(p => ({ ...p, [field]: val })); }
 
   // ── Diet ──────────────────────────────────────────────────────────────────
-  function addDiet()            { setForm(p => ({ ...p, diet: [...p.diet, { ...BLANK_DIET_ENTRY }] })); }
+  function addDiet()            { setDietOpen(true); setForm(p => ({ ...p, diet: [...p.diet, { ...BLANK_DIET_ENTRY }] })); }
   function removeDiet(i)        { setForm(p => ({ ...p, diet: p.diet.filter((_, x) => x !== i) })); }
   function setDiet(i, field, v) {
     setForm(p => { const d = [...p.diet]; d[i] = { ...d[i], [field]: v }; return { ...p, diet: d }; });
   }
 
   // ── Walking ───────────────────────────────────────────────────────────────
-  function addWalk()            { setForm(p => ({ ...p, walking_schedule: [...p.walking_schedule, { ...BLANK_WALK_ENTRY }] })); }
+  function addWalk()            { setWalkOpen(true); setForm(p => ({ ...p, walking_schedule: [...p.walking_schedule, { ...BLANK_WALK_ENTRY }] })); }
   function removeWalk(i)        { setForm(p => ({ ...p, walking_schedule: p.walking_schedule.filter((_, x) => x !== i) })); }
   function setWalk(i, field, v) {
     setForm(p => { const w = [...p.walking_schedule]; w[i] = { ...w[i], [field]: v }; return { ...p, walking_schedule: w }; });
@@ -304,9 +313,30 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   function setMed(i, field, v)  { setForm(p => { const m = [...p.medications]; m[i] = { ...m[i], [field]: v }; return { ...p, medications: m }; }); }
 
   // ── Vaccinations ──────────────────────────────────────────────────────────
-  function addVacc()             { setVaccsOpen(true); setForm(p => ({ ...p, vaccinations: [...p.vaccinations, { vaccine: '', date_given: '', next_due: '' }] })); }
+  function addVacc()             { setVaccsOpen(true); setForm(p => ({ ...p, vaccinations: [...p.vaccinations, { ...BLANK_VACC_ENTRY }] })); }
   function removeVacc(i)         { setForm(p => ({ ...p, vaccinations: p.vaccinations.filter((_, x) => x !== i) })); }
   function setVacc(i, field, v)  { setForm(p => { const v2 = [...p.vaccinations]; v2[i] = { ...v2[i], [field]: v }; return { ...p, vaccinations: v2 }; }); }
+
+  // ── Vaccination record upload ────────────────────────────────────────────
+  async function handleVaccUpload(e, i) {
+    const file = e.target.files?.[0];
+    if (!file || !petId) return;
+    setVaccUploading(prev => ({ ...prev, [i]: true }));
+    setVaccUploadErr(prev => ({ ...prev, [i]: null }));
+    const ext  = file.name.split('.').pop().toLowerCase();
+    const path = `${userId}/${petId}/vacc_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('pet-photos').upload(path, file, { upsert: false, contentType: file.type });
+    if (upErr) {
+      setVaccUploadErr(prev => ({ ...prev, [i]: upErr.message }));
+      setVaccUploading(prev => ({ ...prev, [i]: false }));
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage.from('pet-photos').getPublicUrl(path);
+    setVacc(i, 'record_url', publicUrl);
+    setVacc(i, 'record_name', file.name);
+    setVaccUploading(prev => ({ ...prev, [i]: false }));
+  }
 
   // ── Profile image upload ──────────────────────────────────────────────────
   async function handleProfileUpload(e) {
@@ -379,35 +409,48 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
         {/* Feeding Schedule */}
         <div style={st.optSection}>
           <div style={st.optHeaderRow}>
-            <span style={st.optTitle}>
-              Feeding Schedule
-              {form.diet.length > 0 && <span style={st.badge}>{form.diet.length}</span>}
-            </span>
-            <button style={st.addItemBtn} onClick={addDiet}>+ Add Feeding</button>
+            <button style={st.optToggle} onClick={() => setDietOpen(o => !o)}>
+              {dietOpen ? '▾' : '▸'} Feeding Schedule
+              {(form.diet.length > 0 || freeFed) && <span style={st.badge}>{freeFed ? 'Free fed' : form.diet.length}</span>}
+            </button>
+            {!freeFed && <button style={st.addItemBtn} onClick={addDiet}>+ Add Feeding</button>}
           </div>
-          {form.diet.map((entry, i) => (
-            <DietEntry key={i} entry={entry} index={i} onChange={setDiet} onRemove={removeDiet} />
-          ))}
-          {form.diet.length === 0 && (
-            <p style={st.dimText}>No feedings added. Click &quot;+ Add Feeding&quot; to build a daily schedule.</p>
+          {dietOpen && (
+            <div>
+              <label style={st.freeFedRow}>
+                <input type='checkbox' checked={freeFed}
+                  onChange={e => { setFreeFed(e.target.checked); set('free_fed', e.target.checked); }} />
+                Free fed (food always available)
+              </label>
+              {!freeFed && form.diet.map((entry, i) => (
+                <DietEntry key={i} entry={entry} index={i} onChange={setDiet} onRemove={removeDiet} />
+              ))}
+              {!freeFed && form.diet.length === 0 && (
+                <p style={st.dimText}>No feedings added. Click &quot;+ Add Feeding&quot; to build a daily schedule.</p>
+              )}
+            </div>
           )}
         </div>
 
         {/* Walking Schedule */}
         <div style={st.optSection}>
           <div style={st.optHeaderRow}>
-            <span style={st.optTitle}>
-              Walking Schedule
+            <button style={st.optToggle} onClick={() => setWalkOpen(o => !o)}>
+              {walkOpen ? '▾' : '▸'} Walking Schedule
               {form.walking_schedule.length > 0 && <span style={st.badge}>{form.walking_schedule.length}</span>}
-            </span>
+            </button>
             <button style={st.addItemBtn} onClick={addWalk}>+ Add Walk</button>
           </div>
-          {form.walking_schedule.map((entry, i) => (
-            <WalkEntry key={i} entry={entry} index={i}
-              onChange={setWalk} onRemove={removeWalk} onToggleDay={toggleWalkDay} />
-          ))}
-          {form.walking_schedule.length === 0 && (
-            <p style={st.dimText}>No walks added. Click &quot;+ Add Walk&quot; to add a morning, evening, etc.</p>
+          {walkOpen && (
+            <div>
+              {form.walking_schedule.map((entry, i) => (
+                <WalkEntry key={i} entry={entry} index={i}
+                  onChange={setWalk} onRemove={removeWalk} onToggleDay={toggleWalkDay} />
+              ))}
+              {form.walking_schedule.length === 0 && (
+                <p style={st.dimText}>No walks added. Click &quot;+ Add Walk&quot; to add a morning, evening, etc.</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -466,6 +509,28 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
                     onChange={e => setVacc(i, 'next_due', e.target.value)} />
                 </label>
               </div>
+              {/* Vaccination record upload (edit mode only) */}
+              {!isNew && petId && (
+                <div style={st.vaccFileRow}>
+                  {v.record_url ? (
+                    <span style={st.vaccFileLink}>
+                      📄 <a href={v.record_url} target='_blank' rel='noreferrer' style={{ color: COLORS.blue }}>
+                        {v.record_name || 'Vaccination Record'}
+                      </a>
+                      <button style={st.removeBtn} onClick={() => { setVacc(i, 'record_url', ''); setVacc(i, 'record_name', ''); }}>
+                        Remove file
+                      </button>
+                    </span>
+                  ) : (
+                    <label style={st.uploadBtn}>
+                      {vaccUploading[i] ? 'Uploading…' : '📎 Attach Record (PDF/DOC)'}
+                      <input type='file' accept='.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                        onChange={e => handleVaccUpload(e, i)} disabled={vaccUploading[i]} style={{ display: 'none' }} />
+                    </label>
+                  )}
+                  {vaccUploadErr[i] && <p style={st.formErr}>{vaccUploadErr[i]}</p>}
+                </div>
+              )}
               <button style={st.removeBtn} onClick={() => removeVacc(i)}>Remove</button>
             </div>
           ))}
@@ -665,7 +730,11 @@ const st = {
   optToggle: { background: 'none', border: 'none', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.875rem', cursor: 'pointer', padding: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' },
   addItemBtn: { background: 'none', border: `1px solid ${COLORS.blue}`, color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', borderRadius: '5px', padding: '0.2rem 0.6rem' },
   listItem:  { background: '#f8fbff', borderRadius: '6px', padding: '0.6rem 0.75rem', marginBottom: '0.4rem' },
+  row2:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
   row4:      { display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.8fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
+  freeFedRow: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, marginBottom: '0.5rem', cursor: 'pointer' },
+  vaccFileRow: { marginTop: '0.4rem', marginBottom: '0.2rem' },
+  vaccFileLink: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.82rem' },
   row3:      { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
   microLabel: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.black, display: 'block', marginBottom: '0.3rem' },
   daysRow:   { display: 'flex', gap: '0.3rem', flexWrap: 'wrap' },

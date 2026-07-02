@@ -147,6 +147,21 @@ export default function AccountSettings() {
       <button style={s.saveBtn} onClick={handleSave} disabled={saving}>
         {saving ? 'Saving…' : 'Save Changes'}
       </button>
+
+      {/* Payment Methods — Phase 3 */}
+      <section style={{ ...s.section, marginTop: '2rem', borderBottom: 'none' }}>
+        <h2 style={s.sectionHead}>Payment Methods</h2>
+        <p style={s.hint}>
+          Securely save a credit card or PayPal account for faster checkout.
+        </p>
+        <div style={s.paymentPlaceholder}>
+          <span style={s.paymentIcon}>💳</span>
+          <p style={s.paymentMsg}>
+            Payment method management will be available once online payments are activated.
+            You will be notified when this feature is ready.
+          </p>
+        </div>
+      </section>
     </div>
   );
 }
@@ -171,6 +186,15 @@ const s = {
   errMsg: { fontFamily: FONTS.body, color: COLORS.red, marginBottom: '0.75rem' },
   okMsg:  { fontFamily: FONTS.body, color: '#2a7a3b', marginBottom: '0.75rem' },
   msg:    { fontFamily: FONTS.body, color: COLORS.lightBlue, padding: '2rem', textAlign: 'center' },
+  paymentPlaceholder: {
+    display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+    background: '#f8fbff', border: '1px dashed #c2d8ee', borderRadius: '8px',
+    padding: '1rem 1.25rem', marginTop: '0.5rem',
+  },
+  paymentIcon: { fontSize: '1.8rem', flexShrink: 0 },
+  paymentMsg: {
+    fontFamily: FONTS.body, fontSize: '0.875rem', color: '#777', margin: 0, lineHeight: 1.5,
+  },
   saveBtn: {
     padding: '0.65rem 2rem', background: COLORS.blue, color: COLORS.white,
     border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer',
