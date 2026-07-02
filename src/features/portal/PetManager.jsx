@@ -10,7 +10,7 @@ const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const BLANK_DIET_ENTRY = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
 const BLANK_WALK_ENTRY = { label: '', days: [], time: '', duration_minutes: '' };
-const BLANK_VACC_ENTRY = { vaccine: '', date_given: '', next_due: '', record_url: '', record_name: '' };
+const BLANK_VACC_ENTRY = { vaccine: '', date_given: '', next_due: '', notes: '', record_url: '', record_name: '' };
 
 const BLANK = {
   name: '', species: 'Dog', breed: '', age_years: '', weight_lbs: '', notes: '',
@@ -284,8 +284,9 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   const [medsOpen, setMedsOpen]       = useState(toArr(initial?.medications).length > 0);
   const [vaccsOpen, setVaccsOpen]     = useState(toArr(initial?.vaccinations).length > 0);
   const [freeFed, setFreeFed]         = useState(initial?.diet?.free_fed === true || false);
-  const [vaccUploading, setVaccUploading] = useState({});
-  const [vaccUploadErr, setVaccUploadErr] = useState({});
+  const [vaccUploading, setVaccUploading]       = useState({});
+  const [vaccUploadErr, setVaccUploadErr]       = useState({});
+  const [vaccAIProcessing, setVaccAIProcessing] = useState({});
 
   function set(field, val) { setForm(p => ({ ...p, [field]: val })); }
 
@@ -336,6 +337,32 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
     setVacc(i, 'record_url', publicUrl);
     setVacc(i, 'record_name', file.name);
     setVaccUploading(prev => ({ ...prev, [i]: false }));
+
+    // ── AI extraction ──────────────────────────────────────────────────────
+    setVaccAIProcessing(prev => ({ ...prev, [i]: true }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-vacc-record`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ storagePath: path }),
+        }
+      );
+      if (res.ok) {
+        const x = await res.json();
+        if (x.vaccine)    setVacc(i, 'vaccine',    x.vaccine);
+        if (x.date_given) setVacc(i, 'date_given', x.date_given);
+        if (x.next_due)   setVacc(i, 'next_due',   x.next_due);
+        if (x.notes)      setVacc(i, 'notes',       x.notes);
+      }
+    } catch (_) { /* AI extraction is best-effort; silently ignore */ }
+    finally { setVaccAIProcessing(prev => ({ ...prev, [i]: false })); }
   }
 
   // ── Profile image upload ──────────────────────────────────────────────────
@@ -413,16 +440,19 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
               {dietOpen ? '▾' : '▸'} Feeding Schedule
               {(form.diet.length > 0 || freeFed) && <span style={st.badge}>{freeFed ? 'Free fed' : form.diet.length}</span>}
             </button>
-            {!freeFed && <button style={st.addItemBtn} onClick={addDiet}>+ Add Feeding</button>}
+            <button style={st.addItemBtn} onClick={addDiet}>+ Add Feeding</button>
           </div>
           {dietOpen && (
             <div>
               <label style={st.freeFedRow}>
                 <input type='checkbox' checked={freeFed}
                   onChange={e => { setFreeFed(e.target.checked); set('free_fed', e.target.checked); }} />
-                Free fed (food always available)
+                Free fed (main food is always available)
               </label>
-              {!freeFed && form.diet.map((entry, i) => (
+              {freeFed && (
+                <p style={st.dimText}>Add treats, supplements, or any scheduled feedings below.</p>
+              )}
+              {form.diet.map((entry, i) => (
                 <DietEntry key={i} entry={entry} index={i} onChange={setDiet} onRemove={removeDiet} />
               ))}
               {!freeFed && form.diet.length === 0 && (
@@ -495,6 +525,9 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
           </div>
           {vaccsOpen && form.vaccinations.map((v, i) => (
             <div key={i} style={st.listItem}>
+              {vaccAIProcessing[i] && (
+                <p style={st.aiProcessingMsg}>🤖 Extracting details from record…</p>
+              )}
               <div style={st.row3}>
                 <label style={st.label}>Vaccine
                   <input style={st.input} type='text' value={v.vaccine}
@@ -509,6 +542,11 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
                     onChange={e => setVacc(i, 'next_due', e.target.value)} />
                 </label>
               </div>
+              <label style={{ ...st.label, marginBottom: '0.4rem' }}>Notes
+                <input style={st.input} type='text' value={v.notes ?? ''}
+                  onChange={e => setVacc(i, 'notes', e.target.value)}
+                  placeholder='Lot number, clinic, additional notes…' />
+              </label>
               {/* Vaccination record upload (edit mode only) */}
               {!isNew && petId && (
                 <div style={st.vaccFileRow}>
@@ -734,6 +772,7 @@ const st = {
   row4:      { display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.8fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
   freeFedRow: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, marginBottom: '0.5rem', cursor: 'pointer' },
   vaccFileRow: { marginTop: '0.4rem', marginBottom: '0.2rem' },
+  aiProcessingMsg: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.blue, fontStyle: 'italic', marginBottom: '0.4rem' },
   vaccFileLink: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.82rem' },
   row3:      { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
   microLabel: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.black, display: 'block', marginBottom: '0.3rem' },
