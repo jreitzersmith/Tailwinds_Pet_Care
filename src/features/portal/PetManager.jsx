@@ -493,7 +493,8 @@ PetForm.propTypes = {
 function DietEntry({ entry, index, onChange, onRemove }) {
   return (
     <div style={st.listItem}>
-      <div style={st.row4}>
+      {/* Row 1: Meal Label + Food Type */}
+      <div style={st.row2}>
         <label style={st.label}>Meal Label
           <input style={st.input} type='text' value={entry.label}
             onChange={e => onChange(index, 'label', e.target.value)}
@@ -505,6 +506,9 @@ function DietEntry({ entry, index, onChange, onRemove }) {
             {DIET_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
         </label>
+      </div>
+      {/* Row 2: Time + Amount */}
+      <div style={{ ...st.row2, marginTop: '0.4rem' }}>
         <label style={st.label}>Time
           <input style={st.input} type='time' value={entry.time}
             onChange={e => onChange(index, 'time', e.target.value)} />
@@ -515,13 +519,12 @@ function DietEntry({ entry, index, onChange, onRemove }) {
             placeholder='1 cup, 1 can…' />
         </label>
       </div>
-      {entry.type === 'Other' && (
-        <label style={{ ...st.label, marginTop: '0.4rem' }}>Description
-          <input style={st.input} type='text' value={entry.notes}
-            onChange={e => onChange(index, 'notes', e.target.value)}
-            placeholder='Describe the food or any special instructions…' />
-        </label>
-      )}
+      {/* Notes — always visible */}
+      <label style={{ ...st.label, marginTop: '0.4rem' }}>Notes
+        <input style={st.input} type='text' value={entry.notes}
+          onChange={e => onChange(index, 'notes', e.target.value)}
+          placeholder={entry.type === 'Other' ? 'Describe the food or any special instructions…' : 'Additional notes…'} />
+      </label>
       <button style={st.removeBtn} onClick={() => onRemove(index)}>Remove</button>
     </div>
   );
