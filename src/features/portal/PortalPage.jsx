@@ -1,18 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { COLORS, FONTS } from '../../constants.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
+import supabase from '../../utils/supabase.js';
 import BookingsList from './BookingsList.jsx';
+import AccountSettings from './AccountSettings.jsx';
+import GuidedSetup from './GuidedSetup.jsx';
 import PetManager from './PetManager.jsx';
 
-const TABS = ['Upcoming', 'Past Bookings', 'My Pets'];
+const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Account'];
 
 export default function PortalPage() {
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState(0);
+  const [setupDone, setSetupDone] = useState(true); // optimistic: avoid flash
+
+  useEffect(() => {
+    async function checkSetup() {
+      const { data } = await supabase
+        .from('customers')
+        .select('setup_completed')
+        .eq('id', user.id)
+        .single();
+      if (data && !data.setup_completed) setSetupDone(false);
+    }
+    if (user?.id) checkSetup();
+  }, [user?.id]);
 
   return (
     <div style={styles.page}>
+      {!setupDone && <GuidedSetup onComplete={() => setSetupDone(true)} />}
       <div style={styles.header}>
         <div>
           <h1 style={styles.heading}>My Account</h1>
@@ -38,6 +55,7 @@ export default function PortalPage() {
         {tab === 0 && <BookingsList filter='upcoming' />}
         {tab === 1 && <BookingsList filter='past' />}
         {tab === 2 && <PetManager />}
+        {tab === 3 && <AccountSettings />}
       </div>
     </div>
   );

@@ -1,17 +1,53 @@
-# TailwindsPetCare — Changelog
+# Changelog
 
-Resolved items. Append a row when an item is closed. Do not delete rows from this file.
+Append a row here after every committed work order.
+Format: `| Date | ID | Description | Commit |`
 
-| Date | Type | # | GH# | Name | Commit |
-|---|---|---|---|---|---|
-<!-- Example: | 2026-06-18 | feat | FR#1 | GH#1 | Vite project init | abc1234 | -->
-| 2026-06-18 | feat | FR#6 | — | Service area map with Google Maps + pricing zones | 08e98b7 |
-| 2026-06-18 | feat | FR#6 | -- | Address search: zone lookup, haversine distance, map marker | 6df1d0f |
-| 2026-06-18 | chore | FR#1-5,FR#7 | -- | Confirm and close FR#1-7: scaffold, hero, services, about, contact, nav/footer/layout | backlog |
-| 2026-06-18 | fix | FR#5 | -- | Remove address from ContactPage.jsx info card | pending |
-| 2026-06-19 | feat | FR#8 | -- | nginx vhost + INFRA.yaml for tailwindspetcare.com | 76cc451 |
-| 2026-06-20 | feat | FR#9  | — | Supabase schema: customers, pets, services, bookings tables + RLS + triggers | pending |
-| 2026-06-20 | feat | FR#10 | — | Customer auth: AuthContext, Login, Signup, ResetPassword, UpdatePassword, ProtectedRoute, Nav updates | pending |
-| 2026-06-20 | feat | FR#11 | — | Booking flow: 4-step wizard (service → schedule → pet → confirm) | pending |
-| 2026-06-20 | feat | FR#12 | — | Customer portal: BookingsList, BookingCard (cancel), PetManager (CRUD) | pending |
-| 2026-06-20 | feat | FR#13 | — | Distance-based pricing: geocode address → polygon zone lookup → travel fee in ConfirmStep | pending |
+---
+
+| Date       | ID    | Description                                                                                                          | Commit |
+|------------|-------|----------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-06-17 | BIZ-0 | Entity: SoS name availability confirmed; Certificate of Formation filed (doc 1598115070003); EIN 42-3224280 obtained | —      |
+| 2026-06-19 | BIZ-0 | Insurance: PSA policy 3ED4170 activated — includes animal bailee/CCC and surety bond coverage                        | —      |
+| 2026-06-19 | FR-0  | Scaffold: Vite + React 18; package.json; vite.config.js; index.html; constants.jsx; App.jsx routing; Layout/Nav/Footer| —      |
+| 2026-06-19 | FR-0  | Phase 1 pages: HeroSection, HomePage, ServicesPage/ServiceCard/servicesData, AboutPage, ContactPage/useContactForm   | —      |
+| 2026-06-19 | FR-0  | Phase 1 pages: ServiceAreaPage, AddressSearch, serviceAreaData, useLoadGoogleMaps, useZoneLookup                     | —      |
+| 2026-06-19 | FR-0  | Phase 2 auth: AuthContext, LoginPage, SignupPage, ResetPasswordPage, UpdatePasswordPage, ProtectedRoute              | —      |
+| 2026-06-19 | FR-0  | Phase 2 booking: BookingPage, ServiceStep, PetStep, ScheduleStep, ConfirmStep, useBookingForm                        | —      |
+| 2026-06-19 | FR-0  | Phase 2 portal: PortalPage, BookingsList, BookingCard, PetManager                                                   | —      |
+| 2026-06-19 | FR-0  | Supabase: supabase/migrations/001_phase2_schema.sql written; supabase.js client utility                              | —      |
+| 2026-07-01 | FR-1  | Build: `npx vite build --outDir C:\tmp\tailwinds-build`; rsync via WSL to ubuntu@3.134.160.32:/var/www/tailwindspetcare/; site live at tailwindspetcare.com | —      |
+| 2026-07-01 | FR-3  | Updated CLAUDE.md phase table: Phase 1 ✅ Complete, Phase 2 ✅ Complete, Phase 3 ⏸ Deferred                                                                 | —      |
+| 2026-07-02 | FR-2  | Supabase migration applied via Management API: customers, pets, services (18 rows seeded), bookings tables + RLS + triggers | —      |
+| 2026-07-02 | FR-2  | Rebuilt and redeployed with live Supabase credentials baked into bundle                                                     | —      |
+
+## 2026-07-02 — FR#17-21: Account settings, enhanced pets, guided setup, tutorial
+
+### FR#17 — DB migration (002_enhanced_schema.sql)
+- ALTER customers: added preferred_vet_name, preferred_vet_clinic, preferred_vet_phone, preferred_vet_address, setup_completed boolean
+- ALTER pets: added diet JSONB, walking_schedule JSONB, medications JSONB (default []), vaccinations JSONB (default [])
+- Applied via Supabase Management API
+
+### FR#18 — AccountSettings.jsx (new)
+- src/features/portal/AccountSettings.jsx
+- Service address with Google Places Autocomplete (DFW_BOUNDS bias, useLoadGoogleMaps)
+- Preferred vet section: name, clinic, phone, address — saves to customers table
+
+### FR#19 — PetManager.jsx (full rewrite)
+- Form state moved into PetForm; PetManager passes onSave(formData) callback
+- Required fields unchanged: name, species, breed, weight_lbs, age_years, notes
+- New optional collapsible sections: Diet (type/meals/amount), Walking Schedule (days/time/duration), Medications (multi-entry list), Vaccinations (multi-entry list)
+- PetCard shows diet summary + medication/vaccination count badges
+
+### FR#20 — GuidedSetup.jsx (new)
+- src/features/portal/GuidedSetup.jsx
+- Modal overlay on first login when customers.setup_completed = false
+- Step 0: service address (Places Autocomplete), Step 1: first pet, Step 2: booking choice
+- Sets setup_completed = true in DB on completion or skip
+- PortalPage.jsx: added setup_completed check, GuidedSetup render, Account tab (index 3)
+
+### FR#21 — TutorialOverlay.jsx (new)
+- src/features/booking/TutorialOverlay.jsx
+- Fixed bottom-right panel with per-step guidance text for all 4 booking steps
+- Minimizable; dismiss via X or Finish Tutorial button
+- BookingPage.jsx: useSearchParams reads ?tutorial=true; passes currentStep to overlay

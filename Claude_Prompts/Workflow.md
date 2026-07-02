@@ -1,6 +1,6 @@
-# TailwindsPetCare — AI Pair Programming Workflow
+﻿# TailwindsPetCare — AI Pair Programming Workflow
 
-**Project:** `C:\Programming_Projects\TailwindsPetCare`
+**Project:** `C:\Programming_Projects\Tailswinds_Pet_Care`
 
 Read `CLAUDE.md` at session start. Read `Claude_Prompts/Code_Standards.md` before writing or reviewing any code. Read the memory index and any `feedback_*.md` files listed there before starting any session.
 
@@ -16,7 +16,7 @@ At the start of every session, before any planning or execution:
 4. Read any `feedback_*.md` files listed in the memory index.
 5. Check for `vite.config.js.timestamp-*.mjs` in the project root. If 5 or more exist, delete them:
    ```
-   Remove-Item "C:\Programming_Projects\TailwindsPetCare\vite.config.js.timestamp-*.mjs" -Force
+   Remove-Item "C:\Programming_Projects\Tailswinds_Pet_Care\vite.config.js.timestamp-*.mjs" -Force
    ```
 
 Do not read source files yet. Source files are read during the planning turn.
@@ -138,7 +138,7 @@ After committing:
 4. Close issue via `mcp__github__update_issue` with `state: closed`.
 5. Confirm Last used numbers line in `Backlog.md` is current.
 6. Move Skip items to Deferred Testing Scenarios in `Backlog.md`.
-7. Push: `git -C "C:\Programming_Projects\TailwindsPetCare" push origin main`
+7. Push: `git -C "C:\Programming_Projects\Tailswinds_Pet_Care" push origin main`
 
 ---
 

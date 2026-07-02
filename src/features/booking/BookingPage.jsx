@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
+import TutorialOverlay from './TutorialOverlay.jsx';
 import { COLORS, FONTS } from '../../constants.jsx';
 import useBookingForm, { STEPS } from './useBookingForm.js';
 import ServiceStep from './steps/ServiceStep.jsx';
@@ -11,6 +13,10 @@ export default function BookingPage() {
   const navigate = useNavigate();
   const booking  = useBookingForm();
   const [submitted, setSubmitted] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [tutorialActive, setTutorialActive] = useState(
+    searchParams.get('tutorial') === 'true'
+  );
 
   if (submitted) {
     return (
@@ -63,6 +69,12 @@ export default function BookingPage() {
         {booking.step === 2 && <PetStep      {...stepProps} />}
         {booking.step === 3 && <ConfirmStep  {...stepProps} />}
       </div>
+      {tutorialActive && (
+        <TutorialOverlay
+          currentStep={booking.step}
+          onDismiss={() => setTutorialActive(false)}
+        />
+      )}
     </div>
   );
 }
