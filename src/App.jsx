@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './features/auth/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import AdminRoute from './components/AdminRoute.jsx';
 import Layout from './components/Layout.jsx';
 import HomePage from './features/home/HomePage.jsx';
 import ServicesPage from './features/services/ServicesPage.jsx';
@@ -13,6 +14,7 @@ import ResetPasswordPage from './features/auth/ResetPasswordPage.jsx';
 import UpdatePasswordPage from './features/auth/UpdatePasswordPage.jsx';
 import BookingPage from './features/booking/BookingPage.jsx';
 import PortalPage from './features/portal/PortalPage.jsx';
+import AdminPage from './features/admin/AdminPage.jsx';
 
 function App() {
   return (
@@ -34,6 +36,9 @@ function App() {
             } />
             <Route path='/portal' element={
               <ProtectedRoute><PortalPage /></ProtectedRoute>
+            } />
+            <Route path='/admin' element={
+              <AdminRoute><AdminPage /></AdminRoute>
             } />
           </Route>
         </Routes>

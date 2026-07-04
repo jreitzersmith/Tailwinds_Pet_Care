@@ -7,8 +7,9 @@ import BookingsList from './BookingsList.jsx';
 import AccountSettings from './AccountSettings.jsx';
 import GuidedSetup from './GuidedSetup.jsx';
 import PetManager from './PetManager.jsx';
+import InvoicesList from './InvoicesList.jsx';
 
-const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Account'];
+const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Invoices', 'Account'];
 
 export default function PortalPage() {
   const { user, signOut } = useAuth();
@@ -55,7 +56,8 @@ export default function PortalPage() {
         {tab === 0 && <BookingsList filter='upcoming' />}
         {tab === 1 && <BookingsList filter='past' />}
         {tab === 2 && <PetManager onSelectTab={setTab} />}
-        {tab === 3 && <AccountSettings />}
+        {tab === 3 && <InvoicesList />}
+        {tab === 4 && <AccountSettings />}
       </div>
     </div>
   );

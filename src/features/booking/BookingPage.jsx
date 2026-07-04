@@ -100,4 +100,66 @@ export default function BookingPage() {
                 {i < booking.step ? '✓' : i + 1}
               </div>
               <span style={{
-                ...styles.progres
+                ...styles.progressLabel,
+                color: i <= booking.step ? COLORS.blue : COLORS.lightBlue,
+              }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {booking.step === 0 && <ScheduleStep {...stepProps} />}
+        {booking.step === 1 && <PetStep      {...stepProps} />}
+        {booking.step === 2 && <ServiceStep  {...stepProps} />}
+        {booking.step === 3 && <ConfirmStep  {...stepProps} />}
+      </div>
+      {tutorialActive && (
+        <TutorialOverlay
+          currentStep={booking.step}
+          onDismiss={() => setTutorialActive(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: '100vh', background: COLORS.white, padding: '2rem 1rem',
+  },
+  card: {
+    background: COLORS.white, border: `1px solid ${COLORS.lightBlue}`,
+    borderRadius: '12px', padding: '2rem', maxWidth: '640px',
+    margin: '0 auto', boxShadow: '0 4px 24px rgba(104,175,230,0.10)',
+  },
+  heading: {
+    fontFamily: FONTS.header, color: COLORS.blue, marginBottom: '1.5rem', textAlign: 'center',
+  },
+  progress: {
+    display: 'flex', justifyContent: 'space-between', marginBottom: '2rem',
+  },
+  progressItem: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flex: 1,
+  },
+  progressDot: {
+    width: '2rem', height: '2rem', borderRadius: '50%', color: COLORS.white,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '0.85rem', fontWeight: '700',
+  },
+  progressLabel: {
+    fontSize: '0.75rem', fontFamily: FONTS.body,
+  },
+  body: {
+    fontFamily: FONTS.body, lineHeight: 1.6, color: COLORS.black, textAlign: 'center',
+    marginBottom: '1.5rem',
+  },
+  btnRow: { display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' },
+  primaryBtn: {
+    padding: '0.75rem 1.5rem', background: COLORS.blue, color: COLORS.white,
+    border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer', fontFamily: FONTS.body,
+  },
+  secondaryBtn: {
+    padding: '0.75rem 1.5rem', background: COLORS.white, color: COLORS.blue,
+    border: `2px solid ${COLORS.blue}`, borderRadius: '8px', fontSize: '1rem',
+    cursor: 'pointer', fontFamily: FONTS.body,
+  },
+};

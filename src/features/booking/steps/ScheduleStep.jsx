@@ -1,7 +1,6 @@
-import PropTypes from 'prop-types';
+﻿import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../../constants.jsx';
 
-// Earliest booking: tomorrow
 function minDate() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -9,35 +8,50 @@ function minDate() {
 }
 
 export default function ScheduleStep({ booking }) {
-  const { form, update, next, back } = booking;
+  const { step, form, update, next, back } = booking;
 
-  const canContinue = form.bookingDate && form.bookingTime;
+  function handleStartDate(val) {
+    update({ bookingDate: val, bookingEndDate: form.bookingEndDate || val });
+  }
+
+  function handleEndDate(val) {
+    update({ bookingEndDate: val });
+  }
+
+  const endMin  = form.bookingDate || minDate();
+  const endInvalid = form.bookingDate && form.bookingEndDate && form.bookingEndDate < form.bookingDate;
+  const canContinue = form.bookingDate && !endInvalid;
 
   return (
     <div>
       <p style={styles.subhead}>When do you need service?</p>
 
       <div style={styles.form}>
-        <label style={styles.label}>Date
-          <input
-            type='date'
-            style={styles.input}
-            min={minDate()}
-            value={form.bookingDate}
-            onChange={e => update({ bookingDate: e.target.value })}
-            required
-          />
-        </label>
+        <div style={styles.dateRow}>
+          <label style={styles.label}>Start Date
+            <input
+              type='date'
+              style={styles.input}
+              min={minDate()}
+              value={form.bookingDate}
+              onChange={e => handleStartDate(e.target.value)}
+              required
+            />
+          </label>
 
-        <label style={styles.label}>Preferred Time
-          <input
-            type='time'
-            style={styles.input}
-            value={form.bookingTime}
-            onChange={e => update({ bookingTime: e.target.value })}
-            required
-          />
-        </label>
+          <label style={styles.label}>End Date
+            <input
+              type='date'
+              style={{ ...styles.input, ...(endInvalid ? styles.inputError : {}) }}
+              min={endMin}
+              value={form.bookingEndDate}
+              onChange={e => handleEndDate(e.target.value)}
+            />
+          </label>
+        </div>
+        {endInvalid && (
+          <p style={styles.errorMsg}>End date must be on or after the start date.</p>
+        )}
       </div>
 
       <p style={styles.note}>
@@ -45,8 +59,8 @@ export default function ScheduleStep({ booking }) {
       </p>
 
       <div style={styles.footer}>
-        <button style={styles.secondaryBtn} onClick={back}>Back</button>
-        <button style={styles.primaryBtn} onClick={next} disabled={!canContinue}>Continue</button>
+        {step > 0 && <button style={styles.secondaryBtn} onClick={back}>Back</button>}
+        <button style={{ ...styles.primaryBtn, marginLeft: 'auto' }} onClick={next} disabled={!canContinue}>Continue</button>
       </div>
     </div>
   );
@@ -54,27 +68,29 @@ export default function ScheduleStep({ booking }) {
 
 ScheduleStep.propTypes = {
   booking: PropTypes.shape({
-    form: PropTypes.object.isRequired,
+    form:   PropTypes.object.isRequired,
     update: PropTypes.func.isRequired,
-    next: PropTypes.func.isRequired,
-    back: PropTypes.func.isRequired,
+    next:   PropTypes.func.isRequired,
+    back:   PropTypes.func.isRequired,
   }).isRequired,
 };
 
 const styles = {
-  subhead:  { fontFamily: FONTS.body, color: COLORS.black, marginBottom: '1.25rem' },
-  form:     { display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1rem' },
+  subhead: { fontFamily: FONTS.body, color: COLORS.black, marginBottom: '1.25rem' },
+  form:    { display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1rem' },
+  dateRow: { display: 'flex', gap: '1rem' },
   label: {
-    display: 'flex', flexDirection: 'column', gap: '0.35rem',
+    display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1,
     fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black,
   },
   input: {
     padding: '0.6rem 0.8rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none',
+    border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none', width: '100%',
   },
+  inputError: { borderColor: COLORS.red },
+  errorMsg: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.red, marginTop: '-0.75rem' },
   note: {
-    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue,
-    marginBottom: '1.5rem',
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue, marginBottom: '1.5rem',
   },
   footer: { display: 'flex', justifyContent: 'space-between', gap: '1rem' },
   primaryBtn: {
