@@ -110,7 +110,7 @@ export default function BookingsList({ filter }) {
     });
   }
 
-  if (loading) return <p style={styles.msg}>Loading…</p>;
+  if (loading) return <p style={styles.msg}>Loading...</p>;
   if (error)   return <p style={styles.error}>{error}</p>;
   if (!bookings.length) return (
     <p style={styles.empty}>

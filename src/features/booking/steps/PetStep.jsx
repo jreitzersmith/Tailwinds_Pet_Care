@@ -144,7 +144,6 @@ export default function PetStep({ booking }) {
   function removeNewMed(i) {
     update({ newPet: { ...form.newPet, medications: (form.newPet.medications || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
   }
-
   function toggleNewWalkDay(i, day) {
     const w = [...(form.newPet.walking_schedule || [])];
     const days = w[i]?.days ?? [];
@@ -179,7 +178,6 @@ export default function PetStep({ booking }) {
       return { ...f, walking_schedule: w };
     });
   }
-
   function setEditMed(i, field, v) {
     setEditFields(f => { const m = [...f.medications]; m[i] = { ...m[i], [field]: v }; return { ...f, medications: m }; });
   }
@@ -331,7 +329,6 @@ export default function PetStep({ booking }) {
         </div>
       )}
 
-      {/* Edit modal */}
       {editingPet && (
         <div style={styles.overlay} onClick={closeEdit}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
@@ -562,10 +559,10 @@ const styles = {
   err:          { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.85rem' },
   petList:      { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' },
   petCard: {
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '8px',
+    border: '1px solid ' + COLORS.lightBlue, borderRadius: '8px',
     padding: '0.75rem 1rem', cursor: 'pointer', background: COLORS.white,
   },
-  petCardSelected: { border: `2px solid ${COLORS.blue}`, background: '#f0f8ff' },
+  petCardSelected: { border: '2px solid ' + COLORS.blue, background: '#f0f8ff' },
   petCardTop:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   petName:       { fontFamily: FONTS.header, color: COLORS.black, fontWeight: '600' },
   petSpecies:    { fontFamily: FONTS.body, color: '#777', fontSize: '0.875rem' },
@@ -573,16 +570,16 @@ const styles = {
   badge:         { fontSize: '0.75rem', background: '#e8f4fd', borderRadius: '4px', padding: '0.15rem 0.4rem', fontFamily: FONTS.body },
   selectedMark:  { fontFamily: FONTS.body, color: COLORS.blue, fontSize: '0.8rem', marginTop: '0.35rem', display: 'block' },
   editPetBtn: {
-    background: 'none', border: `1px solid ${COLORS.lightBlue}`, borderRadius: '5px',
+    background: 'none', border: '1px solid ' + COLORS.lightBlue, borderRadius: '5px',
     padding: '0.2rem 0.6rem', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.blue,
   },
   addNewBtn: {
-    background: 'none', border: `1px dashed ${COLORS.blue}`, borderRadius: '8px',
+    background: 'none', border: '1px dashed ' + COLORS.blue, borderRadius: '8px',
     padding: '0.6rem 1rem', cursor: 'pointer', fontFamily: FONTS.body, color: COLORS.blue,
     fontSize: '0.9rem', textAlign: 'center',
   },
   newPetForm: {
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
+    border: '1px solid ' + COLORS.lightBlue, borderRadius: '10px',
     padding: '1rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem',
   },
   overlay: {
@@ -604,31 +601,28 @@ const styles = {
   },
   cancelModalBtn: {
     padding: '0.5rem 1rem', background: COLORS.white, color: COLORS.black,
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body,
+    border: '1px solid ' + COLORS.lightBlue, borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body,
   },
-  /* Key overflow fix: minWidth:0 on fieldGroup prevents grid children from blowing out */
   row2:       { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' },
   fieldGroup: { display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 },
   label:      { fontFamily: FONTS.body, fontSize: '0.8rem', color: '#555', fontWeight: '600' },
-  /* width:100% + boxSizing:border-box prevents inputs from overflowing their grid cell */
   input: {
     padding: '0.45rem 0.65rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none',
+    border: '1px solid ' + COLORS.lightBlue, fontSize: '0.9rem', outline: 'none',
     fontFamily: FONTS.body, width: '100%', boxSizing: 'border-box',
   },
   select: {
     padding: '0.45rem 0.65rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none',
+    border: '1px solid ' + COLORS.lightBlue, fontSize: '0.9rem', outline: 'none',
     fontFamily: FONTS.body, width: '100%', boxSizing: 'border-box', background: COLORS.white,
   },
   scheduleSection: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
   scheduleHeader:  { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   scheduleLabel:   { fontFamily: FONTS.body, fontSize: '0.875rem', fontWeight: '600', color: COLORS.black },
   addEntryBtn: {
-    background: 'none', border: `1px solid ${COLORS.blue}`, borderRadius: '5px',
+    background: 'none', border: '1px solid ' + COLORS.blue, borderRadius: '5px',
     padding: '0.2rem 0.6rem', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.blue,
   },
-  /* minWidth:0 + overflow:hidden prevent listItem from escaping modal bounds */
   listItem: {
     border: '1px solid #e0eaf6', borderRadius: '6px', padding: '0.6rem 0.75rem',
     display: 'flex', flexDirection: 'column', gap: '0.4rem',
@@ -643,14 +637,14 @@ const styles = {
   daysRow:      { display: 'flex', flexWrap: 'wrap', gap: '0.3rem' },
   dayBtn: {
     padding: '0.2rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem',
-    border: `1px solid ${COLORS.lightBlue}`, cursor: 'pointer',
+    border: '1px solid ' + COLORS.lightBlue, cursor: 'pointer',
     background: COLORS.white, fontFamily: FONTS.body, color: COLORS.black,
   },
-  dayBtnActive: { background: COLORS.blue, color: COLORS.white, border: `1px solid ${COLORS.blue}` },
+  dayBtnActive: { background: COLORS.blue, color: COLORS.white, border: '1px solid ' + COLORS.blue },
   navRow:  { display: 'flex', justifyContent: 'space-between', marginTop: '1.5rem' },
   backBtn: {
     padding: '0.6rem 1.25rem', background: COLORS.white, color: COLORS.blue,
-    border: `2px solid ${COLORS.blue}`, borderRadius: '8px', cursor: 'pointer', fontFamily: FONTS.body,
+    border: '2px solid ' + COLORS.blue, borderRadius: '8px', cursor: 'pointer', fontFamily: FONTS.body,
   },
   nextBtn: {
     padding: '0.6rem 1.5rem', background: COLORS.blue, color: COLORS.white,

@@ -52,7 +52,7 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, onCa
     <div style={styles.card}>
       <div style={styles.top}>
         <div>
-          <p style={styles.serviceName}>{booking.services?.name ?? '—'}</p>
+          <p style={styles.serviceName}>{booking.services?.name ?? '\u2014'}</p>
           <p style={styles.meta}>
             {booking.pets?.name && <span>{booking.pets.name} ({booking.pets.species})</span>}
           </p>
@@ -76,7 +76,7 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, onCa
       {showLateWarning && (
         <div style={styles.warningPanel}>
           <p style={styles.warningText}>
-            {'⚠️'} This booking starts within 24 hours. Changing the schedule at this time
+            {'\u26a0\ufe0f'} This booking starts within 24 hours. Changing the schedule at this time
             may result in a <strong>late change fee of $20</strong>.
           </p>
           <div style={styles.warningBtns}>
@@ -116,7 +116,7 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, onCa
           <div style={styles.confirmRow}>
             <span style={styles.confirmText}>Cancel this booking?</span>
             <button style={styles.confirmYes} onClick={confirmCancel} disabled={cancelling}>
-              {cancelling ? 'Cancelling…' : 'Yes, cancel'}
+              {cancelling ? 'Cancelling\u2026' : 'Yes, cancel'}
             </button>
             <button style={styles.confirmNo} onClick={() => setConfirming(false)}>Keep it</button>
           </div>

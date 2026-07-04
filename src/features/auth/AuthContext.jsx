@@ -5,18 +5,20 @@ import supabase from '../../utils/supabase.js';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(undefined); // undefined = still loading
-  const [user, setUser]       = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [session,    setSession]    = useState(undefined); // undefined = still loading
+  const [user,       setUser]       = useState(null);
+  const [isAdmin,    setIsAdmin]    = useState(false);
+  const [adminReady, setAdminReady] = useState(false);
 
   const fetchAdminFlag = useCallback(async (userId) => {
-    if (!userId) { setIsAdmin(false); return; }
+    if (!userId) { setIsAdmin(false); setAdminReady(true); return; }
     const { data } = await supabase
       .from('customers')
       .select('is_admin')
       .eq('id', userId)
       .single();
     setIsAdmin(data?.is_admin === true);
+    setAdminReady(true);
   }, []);
 
   useEffect(() => {
@@ -38,8 +40,12 @@ export function AuthProvider({ children }) {
 
   const signOut = () => supabase.auth.signOut();
 
+  // loading stays true until BOTH the session is resolved AND the admin flag is fetched.
+  // Without adminReady, AdminRoute sees isAdmin=false mid-flight and redirects to /.
+  const loading = session === undefined || !adminReady;
+
   return (
-    <AuthContext.Provider value={{ session, user, isAdmin, signOut, loading: session === undefined }}>
+    <AuthContext.Provider value={{ session, user, isAdmin, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   );

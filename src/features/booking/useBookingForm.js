@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 
 // Steps: 0=schedule, 1=pet, 2=service, 3=confirm
 export const STEPS = ['Schedule', 'Pet', 'Service', 'Confirm'];

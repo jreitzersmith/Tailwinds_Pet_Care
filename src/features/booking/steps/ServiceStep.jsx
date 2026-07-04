@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import supabase from '../../../utils/supabase.js';
 import { COLORS, FONTS } from '../../../constants.jsx';
@@ -540,7 +540,7 @@ export default function ServiceStep({ booking }) {
                 );
               }
 
-              // ── Single-select ─────────────────────────────────────────────
+              // ── Single-select ─────────────────────────────────────────────────────────────
               const selected    = form.serviceId === svc.id;
               const isTransport = svc.name === TRANSPORT_SVC;
               const depAddons   = selected && !isTransport ? getDependentAddons(svc) : [];

@@ -163,7 +163,6 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
           .from('bookings').insert({ ...bookingPayload, customer_id: user.id }).select('id').single();
         if (bookErr) throw new Error(bookErr.message);
 
-        // Auto-create invoice for new bookings
         const petLabel = form.petIsNew ? (form.newPet?.name || 'New pet') : (form.petName || '');
         await supabase.from('invoices').insert({
           booking_id:      newBooking.id,
@@ -179,7 +178,6 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
           travel_fee:      totalTravel || 0,
           total_amount:    form.isQuote ? null : totalPrice,
         });
-        // Invoice failure is non-fatal — booking was created successfully
       }
       onSubmitSuccess();
     } catch (err) {
@@ -189,7 +187,6 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
     }
   }
 
-  // ── Derived pricing values ─────────────────────────────────────────────────
   const petLabel     = form.petIsNew ? form.newPet.name || 'New pet' : (form.petName || '(selected pet)');
   const numDays      = pricing ? getNumDays() : 0;
   const totalTravel  = (form.travelFee || 0) * numDays;
@@ -209,10 +206,9 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
     return { name: (form.extraServiceNames || [])[i] || 'Service', count, unit: getUnitPrice(id) };
   });
 
-  // lineDetail: returns a JS string from a template literal -- \u inside template IS interpreted
   function lineDetail(count, unit) {
-    if (unit <= 0) return `${count}\u00d7 (quote)`;
-    return `${count}\u00d7 $${unit.toFixed(2)} = $${(count * unit).toFixed(2)}`;
+    if (unit <= 0) return count + '× (quote)';
+    return count + '× $' + unit.toFixed(2) + ' = $' + (count * unit).toFixed(2);
   }
 
   return (
@@ -220,12 +216,12 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
       <p style={styles.subhead}>Review your booking details.</p>
 
       <div style={styles.summary}>
-        <Row label='Service'    value={form.serviceName || '\u2014'} />
-        <Row label='Start Date' value={form.bookingDate  || '\u2014'} />
+        <Row label='Service'    value={form.serviceName || '—'} />
+        <Row label='Start Date' value={form.bookingDate  || '—'} />
         {form.bookingEndDate && form.bookingEndDate !== form.bookingDate && (
           <Row label='End Date' value={form.bookingEndDate} />
         )}
-        <Row label='Time' value={form.bookingTime || '\u2014'} />
+        <Row label='Time' value={form.bookingTime || '—'} />
         <Row label='Pet'  value={petLabel} />
         {form.transportOrigin && <Row label='Pickup'   value={form.transportOrigin} />}
         {form.transportDest   && <Row label='Drop-off' value={form.transportDest}   />}
@@ -240,7 +236,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
       <div style={styles.addrSection}>
         {usingsSaved && (
           <p style={styles.savedNote}>
-            Using your saved service address{'\u2014'}update below to use a different location.
+            Using your saved service address{'—'}update below to use a different location.
           </p>
         )}
         <label style={styles.label}>Your service address
@@ -251,7 +247,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
             onBlur={resolvePrice}
           />
         </label>
-        {priceLoading && <p style={styles.note}>Calculating travel fee{'\u2026'}</p>}
+        {priceLoading && <p style={styles.note}>Calculating travel fee{'…'}</p>}
         {priceError   && <p style={styles.errorMsg}>{priceError}</p>}
       </div>
 
@@ -261,16 +257,16 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
             <>
               <PricingRow
                 label={form.serviceName || 'Service'}
-                value={form.isQuote ? 'Quote required' : `$${(form.basePrice || 0).toFixed(2)}`} />
+                value={form.isQuote ? 'Quote required' : '$' + (form.basePrice || 0).toFixed(2)} />
               {(form.addonTotal > 0) &&
-                <PricingRow label='Add-Ons' value={`+$${(form.addonTotal || 0).toFixed(2)}`} />}
+                <PricingRow label='Add-Ons' value={'+$' + (form.addonTotal || 0).toFixed(2)} />}
               {(form.extraTotal > 0) &&
-                <PricingRow label='Additional Services' value={`+$${(form.extraTotal || 0).toFixed(2)}`} />}
+                <PricingRow label='Additional Services' value={'+$' + (form.extraTotal || 0).toFixed(2)} />}
               <PricingRow label='Travel Surcharge'
-                value={totalTravel === 0 ? 'None' : `+$${totalTravel.toFixed(2)}`} />
+                value={totalTravel === 0 ? 'None' : '+$' + totalTravel.toFixed(2)} />
               <div style={styles.divider} />
               <PricingRow label='Total'
-                value={form.isQuote ? 'Quote pending' : `$${grandTotal.toFixed(2)}`} bold />
+                value={form.isQuote ? 'Quote pending' : '$' + grandTotal.toFixed(2)} bold />
             </>
           ) : (
             <>
@@ -303,19 +299,19 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
                 <div style={styles.group}>
                   <p style={styles.groupLabel}>Surcharges:</p>
                   <p style={styles.groupLine}>
-                    Travel Surcharge: {numDays}{'\u00d7'} ${(form.travelFee || 0).toFixed(2)} = ${totalTravel.toFixed(2)}
+                    Travel Surcharge: {numDays}{'×'} ${(form.travelFee || 0).toFixed(2)} = ${totalTravel.toFixed(2)}
                   </p>
                 </div>
               )}
 
               <div style={styles.divider} />
               <PricingRow label='Total'
-                value={form.isQuote ? 'Quote pending' : `$${grandTotal.toFixed(2)}`} bold />
+                value={form.isQuote ? 'Quote pending' : '$' + grandTotal.toFixed(2)} bold />
             </>
           )}
 
           <button style={styles.invoiceToggle} onClick={() => setInvoiceOpen(v => !v)}>
-            {invoiceOpen ? '\u25b2 Hide Itemized Invoice' : '\u25bc Itemized Invoice'}
+            {invoiceOpen ? '▲ Hide Itemized Invoice' : '▼ Itemized Invoice'}
           </button>
         </div>
       )}
@@ -324,7 +320,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
         <textarea style={styles.textarea} rows={3}
           value={form.specialInstructions}
           onChange={e => update({ specialInstructions: e.target.value })}
-          placeholder={'Alarm codes, pet quirks, medication schedules\u2026'} />
+          placeholder={'Alarm codes, pet quirks, medication schedules…'} />
       </label>
 
       {submitError && <p style={styles.errorMsg}>{submitError}</p>}
@@ -332,7 +328,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
       <div style={styles.footer}>
         <button style={styles.secondaryBtn} onClick={back} disabled={submitting}>Back</button>
         <button style={styles.primaryBtn} onClick={handleSubmit} disabled={submitting || !pricing}>
-          {submitting ? 'Submitting\u2026' : (form.editBookingId ? 'Update Booking' : 'Confirm Booking')}
+          {submitting ? 'Submitting…' : (form.editBookingId ? 'Update Booking' : 'Confirm Booking')}
         </button>
       </div>
     </div>
@@ -379,21 +375,21 @@ const styles = {
   },
   input: {
     padding: '0.6rem 0.8rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none',
+    border: '1px solid ' + COLORS.lightBlue, fontSize: '1rem', outline: 'none',
   },
   textarea: {
     padding: '0.6rem 0.8rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none',
+    border: '1px solid ' + COLORS.lightBlue, fontSize: '1rem', outline: 'none',
     resize: 'vertical', fontFamily: FONTS.body,
   },
   savedNote:  { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.lightBlue, marginBottom: '0.4rem', fontStyle: 'italic' },
   note:       { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
   errorMsg:   { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.9rem', marginBottom: '0.75rem' },
   pricingBox: {
-    background: '#f8fbff', border: `1px solid ${COLORS.lightBlue}`,
+    background: '#f8fbff', border: '1px solid ' + COLORS.lightBlue,
     borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem',
   },
-  divider: { borderTop: `1px solid ${COLORS.lightBlue}`, margin: '0.5rem 0' },
+  divider: { borderTop: '1px solid ' + COLORS.lightBlue, margin: '0.5rem 0' },
   row:       { display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0' },
   rowLabel:  { fontFamily: FONTS.body, color: '#555', fontSize: '0.9rem' },
   rowValue:  { fontFamily: FONTS.body, color: COLORS.black, fontSize: '0.9rem' },
@@ -417,7 +413,7 @@ const styles = {
   },
   secondaryBtn: {
     padding: '0.75rem 1.5rem', background: COLORS.white, color: COLORS.blue,
-    border: `2px solid ${COLORS.blue}`, borderRadius: '8px', fontSize: '1rem',
+    border: '2px solid ' + COLORS.blue, borderRadius: '8px', fontSize: '1rem',
     cursor: 'pointer', fontFamily: FONTS.body,
   },
 };
