@@ -4,149 +4,142 @@ import supabase from '../../../utils/supabase.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { COLORS, FONTS } from '../../../constants.jsx';
 
-const SPECIES = ['Dog', 'Cat', 'Bird', 'Reptile', 'Fish', 'Small Mammal', 'Other'];
+const SPECIES    = ['Dog', 'Cat', 'Bird', 'Reptile', 'Fish', 'Small Mammal', 'Other'];
+const DIET_TYPES = ['Kibble', 'Wet Food', 'Raw', 'Mixed', 'Treat', 'Bone/Rawhide', 'Other'];
+const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const BLANK_DIET = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
+const BLANK_WALK = { label: '', days: [], time: '', duration_minutes: '' };
+const BLANK_MED  = { name: '', dose: '', frequency: 'Once Daily', time1: '', time2: '', details: '' };
+
+function toArr(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return [val];
+}
+
+function entryToSlot(label, timeStr) {
+  const l = (label || '').toLowerCase();
+  if (l.includes('morning') || l.includes('breakfast') || l.includes('am')) return 'morning';
+  if (l.includes('midday') || l.includes('noon') || l.includes('lunch') || l.includes('afternoon')) return 'midday';
+  if (l.includes('evening') || l.includes('dinner') || l.includes('night') || l.includes('pm')) return 'evening';
+  if (timeStr) {
+    const h = parseInt((timeStr || '').split(':')[0], 10);
+    if (!isNaN(h)) {
+      if (h >= 5 && h < 12)  return 'morning';
+      if (h >= 12 && h < 17) return 'midday';
+      return 'evening';
+    }
+  }
+  return null;
+}
+
+function medToSlot(timeStr) {
+  if (!timeStr) return null;
+  const h = parseInt((timeStr || '').split(':')[0], 10);
+  if (isNaN(h)) return null;
+  if (h >= 5 && h < 12)  return 'morning';
+  if (h >= 12 && h < 17) return 'midday';
+  return 'evening';
+}
+
+function petToSchedule(pet) {
+  const ORDER = ['morning', 'midday', 'evening'];
+  const feedSet = new Set();
+  const walkSet = new Set();
+  const medSet  = new Set();
+  toArr(pet.diet).forEach(e => { const s = entryToSlot(e.label, e.time); if (s) feedSet.add(s); });
+  toArr(pet.walking_schedule).forEach(e => { const s = entryToSlot(e.label, e.time); if (s) walkSet.add(s); });
+  toArr(pet.medications).forEach(m => {
+    if (m.frequency === 'Once Daily' || m.frequency === 'Twice Daily') {
+      const s1 = medToSlot(m.time1); if (s1) medSet.add(s1);
+      if (m.frequency === 'Twice Daily') { const s2 = medToSlot(m.time2); if (s2) medSet.add(s2); }
+    }
+  });
+  return {
+    feeding_times:    ORDER.filter(t => feedSet.has(t)),
+    walking_times:    ORDER.filter(t => walkSet.has(t)),
+    medication_times: ORDER.filter(t => medSet.has(t)),
+  };
+}
+
+function petToForm(pet) {
+  const rawDiet = pet.diet;
+  const freeFed = rawDiet && !Array.isArray(rawDiet) && rawDiet.free_fed === true;
+  return {
+    name:             pet.name        ?? '',
+    species:          pet.species     ?? 'Dog',
+    breed:            pet.breed       ?? '',
+    age_years:        pet.age_years   ?? '',
+    weight_lbs:       pet.weight_lbs  ?? '',
+    notes:            pet.notes       ?? '',
+    diet:             freeFed ? [] : toArr(rawDiet),
+    walking_schedule: toArr(pet.walking_schedule),
+    medications:      toArr(pet.medications),
+  };
+}
 
 export default function PetStep({ booking }) {
   const { form, update, next, back } = booking;
   const { user } = useAuth();
-  const [pets, setPets]       = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
-  const [addingNew, setAddingNew] = useState(false);
+  const [pets, setPets]             = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [addingNew, setAddingNew]   = useState(false);
+  const [editingPet, setEditingPet] = useState(null);
+  const [editFields, setEditFields] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError]   = useState(null);
 
-  useEffect(() => {
-    async function fetchPets() {
-      setLoading(true);
-      const { data, error: err } = await supabase
-        .from('pets')
-        .select('id, name, species, breed')
-        .eq('customer_id', user.id)
-        .order('name');
-      if (err) { setError(err.message); } else { setPets(data); }
-      setLoading(false);
-    }
-    fetchPets();
-  }, [user.id]);
+  async function fetchPets() {
+    setLoading(true);
+    const { data, error: err } = await supabase
+      .from('pets')
+      .select('id, name, species, breed, age_years, weight_lbs, notes, diet, walking_schedule')
+      .eq('customer_id', user.id)
+      .order('name');
+    if (err) { setError(err.message); } else { setPets(data || []); }
+    setLoading(false);
+  }
+
+  useEffect(() => { fetchPets(); }, [user.id]);
 
   function selectExisting(pet) {
-    update({ petId: pet.id, petIsNew: false });
+    update({ petId: pet.id, petName: pet.name, petIsNew: false, petSchedule: petToSchedule(pet) });
     setAddingNew(false);
   }
 
   function handleNewPetField(field, value) {
     update({ newPet: { ...form.newPet, [field]: value }, petId: null, petIsNew: true });
   }
-
-  const canContinue = form.petId || (form.petIsNew && form.newPet.name && form.newPet.species);
-
-  if (loading) return <p style={styles.msg}>Loading your pets…</p>;
-
-  return (
-    <div>
-      <p style={styles.subhead}>Which pet needs care?</p>
-      {error && <p style={styles.error}>{error}</p>}
-
-      {pets.length > 0 && !addingNew && (
-        <div style={styles.petList}>
-          {pets.map(pet => {
-            const selected = form.petId === pet.id;
-            return (
-              <button key={pet.id}
-                style={{ ...styles.petBtn, ...(selected ? styles.petBtnSelected : {}) }}
-                onClick={() => selectExisting(pet)}>
-                <span style={styles.petName}>{pet.name}</span>
-                <span style={styles.petMeta}>{pet.species}{pet.breed ? ` · ${pet.breed}` : ''}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <button style={styles.addNewToggle} onClick={() => { setAddingNew(v => !v); update({ petId: null, petIsNew: !addingNew }); }}>
-        {addingNew ? '← Back to my pets' : '+ Add a new pet'}
-      </button>
-
-      {addingNew && (
-        <div style={styles.newPetForm}>
-          <h3 style={styles.newPetHeading}>New Pet</h3>
-          {[
-            { field: 'name',       label: 'Name',          type: 'text',   required: true },
-            { field: 'breed',      label: 'Breed',         type: 'text' },
-            { field: 'age_years',  label: 'Age (years)',   type: 'number' },
-            { field: 'weight_lbs', label: 'Weight (lbs)',  type: 'number' },
-            { field: 'notes',      label: 'Special Notes', type: 'text' },
-          ].map(({ field, label, type, required }) => (
-            <label key={field} style={styles.label}>{label}
-              <input style={styles.input} type={type} required={required}
-                value={form.newPet[field]}
-                onChange={e => handleNewPetField(field, e.target.value)} />
-            </label>
-          ))}
-          <label style={styles.label}>Species
-            <select style={styles.input} value={form.newPet.species}
-              onChange={e => handleNewPetField('species', e.target.value)}>
-              {SPECIES.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
-
-      <div style={styles.footer}>
-        <button style={styles.secondaryBtn} onClick={back}>Back</button>
-        <button style={styles.primaryBtn} onClick={next} disabled={!canContinue}>Continue</button>
-      </div>
-    </div>
-  );
-}
-
-PetStep.propTypes = {
-  booking: PropTypes.shape({
-    form: PropTypes.object.isRequired,
-    update: PropTypes.func.isRequired,
-    next: PropTypes.func.isRequired,
-    back: PropTypes.func.isRequired,
-  }).isRequired,
-};
-
-const styles = {
-  subhead:  { fontFamily: FONTS.body, color: COLORS.black, marginBottom: '1.25rem' },
-  msg:      { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
-  error:    { fontFamily: FONTS.body, color: COLORS.red, marginBottom: '1rem' },
-  petList:  { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' },
-  petBtn: {
-    display: 'flex', flexDirection: 'column', gap: '0.2rem', textAlign: 'left',
-    padding: '0.75rem 1rem', background: COLORS.white,
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '8px', cursor: 'pointer',
-  },
-  petBtnSelected: {
-    borderColor: COLORS.blue, background: '#f0f8ff', boxShadow: `0 0 0 2px ${COLORS.blue}`,
-  },
-  petName: { fontFamily: FONTS.body, fontWeight: '600', color: COLORS.black },
-  petMeta: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
-  addNewToggle: {
-    background: 'none', border: 'none', color: COLORS.blue, cursor: 'pointer',
-    fontFamily: FONTS.body, fontSize: '0.9rem', padding: '0.5rem 0', marginBottom: '1rem',
-  },
-  newPetForm: { display: 'flex', flexDirection: 'column', gap: '0.875rem', marginBottom: '1.25rem' },
-  newPetHeading: {
-    fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', marginBottom: '0.25rem',
-  },
-  label: {
-    display: 'flex', flexDirection: 'column', gap: '0.3rem',
-    fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black,
-  },
-  input: {
-    padding: '0.6rem 0.8rem', borderRadius: '6px',
-    border: `1px solid ${COLORS.lightBlue}`, fontSize: '1rem', outline: 'none',
-  },
-  footer: { display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '1.5rem' },
-  primaryBtn: {
-    padding: '0.75rem 2rem', background: COLORS.blue, color: COLORS.white,
-    border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer', fontFamily: FONTS.body,
-  },
-  secondaryBtn: {
-    padding: '0.75rem 1.5rem', background: COLORS.white, color: COLORS.blue,
-    border: `2px solid ${COLORS.blue}`, borderRadius: '8px', fontSize: '1rem',
-    cursor: 'pointer', fontFamily: FONTS.body,
-  },
-};
+  function setNewDiet(i, field, v) {
+    const d = [...(form.newPet.diet || [])];
+    d[i] = { ...d[i], [field]: v };
+    update({ newPet: { ...form.newPet, diet: d }, petId: null, petIsNew: true });
+  }
+  function addNewDiet() {
+    update({ newPet: { ...form.newPet, diet: [...(form.newPet.diet || []), { ...BLANK_DIET }] }, petId: null, petIsNew: true });
+  }
+  function removeNewDiet(i) {
+    update({ newPet: { ...form.newPet, diet: (form.newPet.diet || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
+  }
+  function setNewWalk(i, field, v) {
+    const w = [...(form.newPet.walking_schedule || [])];
+    w[i] = { ...w[i], [field]: v };
+    update({ newPet: { ...form.newPet, walking_schedule: w }, petId: null, petIsNew: true });
+  }
+  function addNewWalk() {
+    update({ newPet: { ...form.newPet, walking_schedule: [...(form.newPet.walking_schedule || []), { ...BLANK_WALK }] }, petId: null, petIsNew: true });
+  }
+  function removeNewWalk(i) {
+    update({ newPet: { ...form.newPet, walking_schedule: (form.newPet.walking_schedule || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
+  }
+  function setNewMed(i, field, v) {
+    const m = [...(form.newPet.medications || [])];
+    m[i] = { ...m[i], [field]: v };
+    update({ newPet: { ...form.newPet, medications: m }, petId: null, petIsNew: true });
+  }
+  function addNewMed() {
+    update({ newPet: { ...form.newPet, medications: [...(form.newPet.medications || []), { ...BLANK_MED }] }, petId: null, petIsNew: true });
+  }
+  function removeNewMed(i) {
+    update({ newPet: { ...fo

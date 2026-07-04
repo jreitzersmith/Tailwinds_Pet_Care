@@ -309,7 +309,7 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   }
 
   // ── Medications ───────────────────────────────────────────────────────────
-  function addMed()             { setMedsOpen(true); setForm(p => ({ ...p, medications: [...p.medications, { name: '', dose: '', frequency: '' }] })); }
+  function addMed()             { setMedsOpen(true); setForm(p => ({ ...p, medications: [...p.medications, { name: '', dose: '', frequency: 'Once Daily', time1: '', time2: '', details: '' }] })); }
   function removeMed(i)         { setForm(p => ({ ...p, medications: p.medications.filter((_, x) => x !== i) })); }
   function setMed(i, field, v)  { setForm(p => { const m = [...p.medications]; m[i] = { ...m[i], [field]: v }; return { ...p, medications: m }; }); }
 
@@ -493,25 +493,48 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
             </button>
             <button style={st.addItemBtn} onClick={addMed}>+ Add</button>
           </div>
-          {medsOpen && form.medications.map((m, i) => (
-            <div key={i} style={st.listItem}>
-              <div style={st.row3}>
-                <label style={st.label}>Name
-                  <input style={st.input} type='text' value={m.name}
-                    onChange={e => setMed(i, 'name', e.target.value)} placeholder='Heartgard' />
-                </label>
-                <label style={st.label}>Dose
-                  <input style={st.input} type='text' value={m.dose}
-                    onChange={e => setMed(i, 'dose', e.target.value)} placeholder='1 tablet' />
-                </label>
+          {medsOpen && form.medications.map((m, i) => {
+            const freq = m.frequency || 'Once Daily';
+            return (
+              <div key={i} style={st.listItem}>
+                <div style={st.row2}>
+                  <label style={st.label}>Name
+                    <input style={st.input} type='text' value={m.name || ''}
+                      onChange={e => setMed(i, 'name', e.target.value)} placeholder='Heartgard' />
+                  </label>
+                  <label style={st.label}>Dose
+                    <input style={st.input} type='text' value={m.dose || ''}
+                      onChange={e => setMed(i, 'dose', e.target.value)} placeholder='1 tablet' />
+                  </label>
+                </div>
                 <label style={st.label}>Frequency
-                  <input style={st.input} type='text' value={m.frequency}
-                    onChange={e => setMed(i, 'frequency', e.target.value)} placeholder='Monthly' />
+                  <select style={st.input} value={freq} onChange={e => setMed(i, 'frequency', e.target.value)}>
+                    {['Monthly', 'Once Daily', 'Twice Daily', 'Other'].map(o => <option key={o}>{o}</option>)}
+                  </select>
                 </label>
+                {(freq === 'Once Daily' || freq === 'Twice Daily') && (
+                  <div style={st.row2}>
+                    <label style={st.label}>{freq === 'Twice Daily' ? 'Time 1' : 'Time'}
+                      <input style={st.input} type='time' value={m.time1 || ''}
+                        onChange={e => setMed(i, 'time1', e.target.value)} />
+                    </label>
+                    {freq === 'Twice Daily' && (
+                      <label style={st.label}>Time 2
+                        <input style={st.input} type='time' value={m.time2 || ''}
+                          onChange={e => setMed(i, 'time2', e.target.value)} />
+                      </label>
+                    )}
+                  </div>
+                )}
+                <label style={st.label}>Details
+                  <input style={st.input} type='text' value={m.details || ''}
+                    onChange={e => setMed(i, 'details', e.target.value)}
+                    placeholder='Instructions, prescribing vet, etc.' />
+                </label>
+                <button style={st.removeBtn} onClick={() => removeMed(i)}>Remove</button>
               </div>
-              <button style={st.removeBtn} onClick={() => removeMed(i)}>Remove</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Vaccinations */}
@@ -764,20 +787,4 @@ const st = {
   optWrap:     { borderTop: '1px solid #eef3fa', paddingTop: '0.75rem', marginTop: '0.5rem' },
   optSection:  { marginBottom: '0.75rem' },
   optHeaderRow:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' },
-  optTitle: { fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.35rem' },
-  optToggle: { background: 'none', border: 'none', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.875rem', cursor: 'pointer', padding: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' },
-  addItemBtn: { background: 'none', border: `1px solid ${COLORS.blue}`, color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', borderRadius: '5px', padding: '0.2rem 0.6rem' },
-  listItem:  { background: '#f8fbff', borderRadius: '6px', padding: '0.6rem 0.75rem', marginBottom: '0.4rem' },
-  row2:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
-  row4:      { display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.8fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
-  freeFedRow: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, marginBottom: '0.5rem', cursor: 'pointer' },
-  vaccFileRow: { marginTop: '0.4rem', marginBottom: '0.2rem' },
-  aiProcessingMsg: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.blue, fontStyle: 'italic', marginBottom: '0.4rem' },
-  vaccFileLink: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: FONTS.body, fontSize: '0.82rem' },
-  row3:      { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.3rem' },
-  microLabel: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.black, display: 'block', marginBottom: '0.3rem' },
-  daysRow:   { display: 'flex', gap: '0.3rem', flexWrap: 'wrap' },
-  dayBtn:    { padding: '0.2rem 0.45rem', border: `1px solid ${COLORS.lightBlue}`, borderRadius: '4px', background: COLORS.white, color: COLORS.lightBlue, fontFamily: FONTS.body, fontSize: '0.77rem', cursor: 'pointer' },
-  dayBtnOn:  { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue },
-  removeBtn: { background: 'none', border: 'none', color: COLORS.red, fontFamily: FONTS.body, fontSize: '0.8rem', cursor: 'pointer', padding: '0.2rem 0', marginTop: '0.3rem' },
-};
+  optTitle: { fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, fontWeight: '600', display: 'f
