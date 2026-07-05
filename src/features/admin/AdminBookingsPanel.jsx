@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import supabase from '../../utils/supabase.js';
 import { COLORS, FONTS } from '../../constants.jsx';
+import PropTypes from 'prop-types';
 
 const BOOKING_STATUSES = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
 
@@ -26,9 +27,13 @@ const FILTER_OPTIONS = [
 ];
 
 // ── Booking row ───────────────────────────────────────────────────────────────
-function BookingRow({ booking, onStatusChange }) {
-  const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+function BookingRow({ booking, onStatusChange, onNotesChange }) {
+  const [saving,       setSaving]       = useState(false);
+  const [savingNotes,  setSavingNotes]  = useState(false);
+  const [expanded,     setExpanded]     = useState(false);
+  const [adminNotes,   setAdminNotes]   = useState(booking.admin_notes || '');
+  const [notesSaved,   setNotesSaved]   = useState(false);
+
   const ss = statusStyle(booking.status);
 
   const dateRange = booking.booking_end_date && booking.booking_end_date !== booking.booking_date
@@ -45,6 +50,19 @@ function BookingRow({ booking, onStatusChange }) {
     setSaving(false);
     if (error) { alert(`Update failed: ${error.message}`); return; }
     onStatusChange(booking.id, newStatus);
+  }
+
+  async function handleSaveNotes() {
+    setSavingNotes(true);
+    const { error } = await supabase
+      .from('bookings')
+      .update({ admin_notes: adminNotes || null, updated_at: new Date().toISOString() })
+      .eq('id', booking.id);
+    setSavingNotes(false);
+    if (error) { alert(`Failed to save notes: ${error.message}`); return; }
+    onNotesChange(booking.id, adminNotes);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
   }
 
   return (
@@ -76,22 +94,37 @@ function BookingRow({ booking, onStatusChange }) {
 
       {expanded && (
         <div style={styles.rowDetail}>
+          {/* Details grid */}
           <div style={styles.detailGrid}>
+            <span style={styles.detailLabel}>Booking ID</span>
+            <span style={styles.detailValue} title={booking.id}>{booking.id.slice(0, 8)}…</span>
             <span style={styles.detailLabel}>Zone</span>
             <span style={styles.detailValue}>{booking.zone || '—'}</span>
             <span style={styles.detailLabel}>Travel Fee</span>
             <span style={styles.detailValue}>${Number(booking.travel_fee || 0).toFixed(2)}</span>
             <span style={styles.detailLabel}>Base Price</span>
             <span style={styles.detailValue}>${Number(booking.base_price || 0).toFixed(2)}</span>
+            <span style={styles.detailLabel}>Total</span>
+            <span style={{ ...styles.detailValue, fontWeight: '700', color: COLORS.blue }}>
+              ${Number(booking.total_price || 0).toFixed(2)}
+            </span>
             <span style={styles.detailLabel}>Airline</span>
             <span style={styles.detailValue}>{booking.customers?.airline || '—'}</span>
+            <span style={styles.detailLabel}>Booking Time</span>
+            <span style={styles.detailValue}>{booking.booking_time || '—'}</span>
+            <span style={styles.detailLabel}>Created</span>
+            <span style={styles.detailValue}>
+              {booking.created_at ? new Date(booking.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+            </span>
             {booking.special_instructions && (
               <>
-                <span style={styles.detailLabel}>Instructions</span>
+                <span style={styles.detailLabel}>Customer Notes</span>
                 <span style={styles.detailValue}>{booking.special_instructions}</span>
               </>
             )}
           </div>
+
+          {/* Status change */}
           <div style={styles.statusRow}>
             <label style={styles.statusLabel}>Update status:</label>
             <select
@@ -99,6 +132,7 @@ function BookingRow({ booking, onStatusChange }) {
               value={booking.status}
               onChange={handleStatusChange}
               disabled={saving}
+              onClick={e => e.stopPropagation()}
             >
               {BOOKING_STATUSES.map(s => (
                 <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
@@ -106,17 +140,39 @@ function BookingRow({ booking, onStatusChange }) {
             </select>
             {saving && <span style={styles.savingNote}>Saving…</span>}
           </div>
+
+          {/* Admin notes */}
+          <div style={styles.notesSection}>
+            <label style={styles.notesLabel}>Admin Notes / Suggested Changes</label>
+            <textarea
+              style={styles.notesTextarea}
+              value={adminNotes}
+              onChange={e => setAdminNotes(e.target.value)}
+              placeholder="Add internal notes or suggested changes (not visible to customer)…"
+              onClick={e => e.stopPropagation()}
+              rows={3}
+            />
+            <div style={styles.notesFooter}>
+              <button
+                style={styles.saveNotesBtn}
+                onClick={e => { e.stopPropagation(); handleSaveNotes(); }}
+                disabled={savingNotes}
+              >
+                {savingNotes ? 'Saving…' : 'Save Notes'}
+              </button>
+              {notesSaved && <span style={styles.savedConfirm}>✓ Saved</span>}
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-import PropTypes from 'prop-types';
-
 BookingRow.propTypes = {
   booking:        PropTypes.object.isRequired,
   onStatusChange: PropTypes.func.isRequired,
+  onNotesChange:  PropTypes.func.isRequired,
 };
 
 // ── Main panel ────────────────────────────────────────────────────────────────
@@ -134,7 +190,7 @@ export default function AdminBookingsPanel() {
       .select(`
         id, booking_date, booking_end_date, booking_time, status,
         base_price, travel_fee, total_price, zone, special_instructions,
-        created_at, updated_at,
+        admin_notes, created_at, updated_at,
         customers ( email, full_name, airline ),
         services  ( name ),
         pets      ( name, species )
@@ -156,6 +212,12 @@ export default function AdminBookingsPanel() {
   function handleStatusChange(bookingId, newStatus) {
     setBookings(prev =>
       prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b)
+    );
+  }
+
+  function handleNotesChange(bookingId, notes) {
+    setBookings(prev =>
+      prev.map(b => b.id === bookingId ? { ...b, admin_notes: notes } : b)
     );
   }
 
@@ -181,7 +243,12 @@ export default function AdminBookingsPanel() {
       {!loading && !error && bookings.length > 0 && (
         <div style={styles.list}>
           {bookings.map(b => (
-            <BookingRow key={b.id} booking={b} onStatusChange={handleStatusChange} />
+            <BookingRow
+              key={b.id}
+              booking={b}
+              onStatusChange={handleStatusChange}
+              onNotesChange={handleNotesChange}
+            />
           ))}
         </div>
       )}
@@ -232,17 +299,35 @@ const styles = {
 
   rowDetail: { borderTop: `1px solid ${COLORS.lightBlue}`, padding: '0.9rem 1.1rem', background: '#fafcff' },
   detailGrid: {
-    display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.3rem 1rem',
+    display: 'grid', gridTemplateColumns: '130px 1fr', gap: '0.3rem 1rem',
     marginBottom: '0.9rem', fontFamily: FONTS.body, fontSize: '0.85rem',
   },
   detailLabel: { color: COLORS.lightBlue, textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em', alignSelf: 'center' },
   detailValue: { color: COLORS.black },
 
-  statusRow: { display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' },
+  statusRow: { display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' },
   statusLabel: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
   statusSelect: {
     padding: '0.35rem 0.75rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`,
     fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, cursor: 'pointer',
   },
   savingNote: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.lightBlue, fontStyle: 'italic' },
+
+  notesSection: { borderTop: `1px dashed ${COLORS.lightBlue}`, paddingTop: '0.85rem' },
+  notesLabel: {
+    display: 'block', fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px',
+  },
+  notesTextarea: {
+    width: '100%', padding: '0.5rem 0.7rem', borderRadius: '6px',
+    border: `1px solid ${COLORS.lightBlue}`, fontFamily: FONTS.body, fontSize: '0.875rem',
+    color: COLORS.black, resize: 'vertical', boxSizing: 'border-box', outline: 'none',
+  },
+  notesFooter: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' },
+  saveNotesBtn: {
+    padding: '0.35rem 1rem', background: COLORS.blue, color: COLORS.white,
+    border: 'none', borderRadius: '6px', fontFamily: FONTS.body, fontSize: '0.85rem',
+    fontWeight: '600', cursor: 'pointer',
+  },
+  savedConfirm: { fontFamily: FONTS.body, fontSize: '0.82rem', color: '#155724', fontWeight: '600' },
 };
