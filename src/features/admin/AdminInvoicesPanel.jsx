@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import supabase from '../../utils/supabase.js';
 import { COLORS, FONTS, CONTACT, BUSINESS } from '../../constants.jsx';
 import AdminInvoiceEditor from './AdminInvoiceEditor.jsx';
+import PropTypes from 'prop-types';
 
 const STATUS_STYLE = {
   pending_company_review:  { label: 'Pending Review',    bg: '#FFF3CD', color: '#856404' },
@@ -22,7 +23,7 @@ const FILTER_OPTIONS = [
   { key: 'paid',                   label: 'Paid' },
 ];
 
-// ── Reuse PDF renderer from customer InvoicesList ─────────────────────────────
+// ── PDF renderer ──────────────────────────────────────────────────────────────
 function openInvoicePDF(invoice, customerEmail) {
   const cfg = statusCfg(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
@@ -81,9 +82,9 @@ ${invoice.notes ? `<p style="margin-top:16px;font-size:.875rem;color:#555;"><str
 }
 
 // ── Invoice row card ──────────────────────────────────────────────────────────
-import PropTypes from 'prop-types';
-
 function InvoiceRow({ invoice, onEdit }) {
+  const [expanded, setExpanded] = useState(false);
+
   const cfg = statusCfg(invoice.status);
   const customerEmail = invoice.customers?.email || '—';
   const customerName  = invoice.customers?.full_name || '';
@@ -96,16 +97,20 @@ function InvoiceRow({ invoice, onEdit }) {
 
   return (
     <div style={styles.row}>
-      <div style={styles.rowTop}>
+      {/* Collapsed header — always visible */}
+      <div style={styles.rowTop} onClick={() => setExpanded(x => !x)}>
         <div style={styles.rowTopLeft}>
           <span style={styles.invoiceNum}>{invoice.invoice_number}</span>
           <span style={{ ...styles.badge, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
         </div>
-        <div style={styles.rowActions}>
-          <button style={styles.actionBtn} onClick={() => onEdit(invoice)}>Edit</button>
-          <button style={styles.actionBtn} onClick={() => openInvoicePDF(invoice, customerEmail)}>PDF</button>
+        <div style={styles.rowSummary}>
+          <span style={styles.summaryCustomer}>{customerName || customerEmail}</span>
+          <span style={styles.summaryAmount}>{amountDisplay}</span>
+          <span style={styles.expandCaret}>{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
+
+      {/* Compact detail bar — always visible below header */}
       <div style={styles.rowBody}>
         <div style={styles.detail}>
           <span style={styles.detailLabel}>Customer</span>
@@ -124,7 +129,94 @@ function InvoiceRow({ invoice, onEdit }) {
           <span style={styles.detailLabel}>Total</span>
           <span style={{ ...styles.detailValue, fontWeight: '700', color: COLORS.blue }}>{amountDisplay}</span>
         </div>
+        <div style={styles.rowActions}>
+          <button style={styles.actionBtn} onClick={e => { e.stopPropagation(); onEdit(invoice); }}>Edit</button>
+          <button style={styles.actionBtn} onClick={e => { e.stopPropagation(); openInvoicePDF(invoice, customerEmail); }}>PDF</button>
+        </div>
       </div>
+
+      {/* Expanded detail section */}
+      {expanded && (
+        <div style={styles.expandedDetail}>
+          <div style={styles.expandedGrid}>
+            <div style={styles.expandedCol}>
+              <p style={styles.expandLabel}>Invoice #</p>
+              <p style={styles.expandValue}>{invoice.invoice_number}</p>
+              <p style={styles.expandLabel}>Pet</p>
+              <p style={styles.expandValue}>{invoice.pet_name || '—'}</p>
+              <p style={styles.expandLabel}>Zone</p>
+              <p style={styles.expandValue}>{invoice.zone || '—'}</p>
+              <p style={styles.expandLabel}>Travel Fee</p>
+              <p style={styles.expandValue}>{invoice.travel_fee != null ? `$${Number(invoice.travel_fee).toFixed(2)}` : '—'}</p>
+              <p style={styles.expandLabel}>Created</p>
+              <p style={styles.expandValue}>
+                {invoice.created_at
+                  ? new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : '—'}
+              </p>
+            </div>
+
+            <div style={{ flex: 2 }}>
+              <p style={styles.expandLabel}>Line Items</p>
+              {invoice.line_items?.length ? (
+                <table style={styles.lineTable}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...styles.lineTh, textAlign: 'left' }}>Description</th>
+                      <th style={{ ...styles.lineTh, textAlign: 'center' }}>Qty</th>
+                      <th style={{ ...styles.lineTh, textAlign: 'right' }}>Unit $</th>
+                      <th style={{ ...styles.lineTh, textAlign: 'right' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.line_items.map((li, idx) => (
+                      <tr key={idx}>
+                        <td style={styles.lineTd}>{li.description || '—'}</td>
+                        <td style={{ ...styles.lineTd, textAlign: 'center' }}>{li.qty ?? 1}</td>
+                        <td style={{ ...styles.lineTd, textAlign: 'right' }}>
+                          {li.unit_price != null ? `$${Number(li.unit_price).toFixed(2)}` : '—'}
+                        </td>
+                        <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>
+                          {li.total != null ? `$${Number(li.total).toFixed(2)}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={styles.expandValue}>{invoice.service_name || 'No line items'}</p>
+              )}
+
+              {/* Totals */}
+              <div style={styles.totalsBox}>
+                {invoice.subtotal != null && (
+                  <div style={styles.totalRow}>
+                    <span>Subtotal</span>
+                    <span>${Number(invoice.subtotal).toFixed(2)}</span>
+                  </div>
+                )}
+                {Number(invoice.travel_fee) > 0 && (
+                  <div style={styles.totalRow}>
+                    <span>Travel Fee</span>
+                    <span>${Number(invoice.travel_fee).toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ ...styles.totalRow, ...styles.grandTotal }}>
+                  <span>Total</span>
+                  <span>{invoice.total_amount != null ? `$${Number(invoice.total_amount).toFixed(2)}` : '—'}</span>
+                </div>
+              </div>
+
+              {invoice.notes && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <p style={styles.expandLabel}>Notes</p>
+                  <p style={{ ...styles.expandValue, fontStyle: 'italic' }}>{invoice.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -142,9 +234,8 @@ export default function AdminInvoicesPanel() {
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState(null); // null = new invoice
+  const [editTarget, setEditTarget] = useState(null);
 
-  // Load all customers once for the editor dropdown
   useEffect(() => {
     supabase
       .from('customers')
@@ -244,24 +335,66 @@ const styles = {
 
   row: {
     border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
-    padding: '1rem 1.25rem', background: '#fff',
+    background: '#fff', overflow: 'hidden',
   },
   rowTop: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem',
+    padding: '0.75rem 1.25rem', borderBottom: `1px solid #eef1f5`,
+    cursor: 'pointer', background: '#f8fbff',
   },
   rowTopLeft: { display: 'flex', alignItems: 'center', gap: '0.6rem' },
   invoiceNum: { fontFamily: FONTS.header, fontSize: '1rem', color: COLORS.blue, fontWeight: '600' },
   badge: { display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600', fontFamily: FONTS.body },
-  rowActions: { display: 'flex', gap: '0.5rem' },
+  rowSummary: { display: 'flex', alignItems: 'center', gap: '1rem' },
+  summaryCustomer: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black },
+  summaryAmount: { fontFamily: FONTS.body, fontWeight: '700', color: COLORS.blue, fontSize: '0.9rem' },
+  expandCaret: { fontFamily: FONTS.body, color: COLORS.lightBlue, fontSize: '0.75rem' },
+
+  rowBody: {
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem',
+    padding: '0.75rem 1.25rem',
+  },
+  detail: { display: 'flex', flexDirection: 'column', flex: '1 1 120px' },
+  detailLabel: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' },
+  detailValue: { fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black },
+  rowActions: { display: 'flex', gap: '0.5rem', marginLeft: 'auto' },
   actionBtn: {
     padding: '0.3rem 0.85rem', background: 'none', border: `1px solid ${COLORS.blue}`,
     borderRadius: '6px', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.82rem', cursor: 'pointer',
   },
-  rowBody: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem',
+
+  expandedDetail: {
+    borderTop: `1px dashed ${COLORS.lightBlue}`, padding: '1rem 1.25rem', background: '#fafcff',
   },
-  detail: { display: 'flex', flexDirection: 'column' },
-  detailLabel: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' },
-  detailValue: { fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black },
+  expandedGrid: { display: 'flex', gap: '1.5rem', flexWrap: 'wrap' },
+  expandedCol: { flex: 1, minWidth: '160px' },
+  expandLabel: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px', marginTop: '0.6rem',
+  },
+  expandValue: { fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, margin: 0 },
+
+  lineTable: { width: '100%', borderCollapse: 'collapse', marginBottom: '0.5rem' },
+  lineTh: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    borderBottom: `2px solid ${COLORS.blue}`, paddingBottom: '4px', paddingRight: '8px',
+  },
+  lineTd: {
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black,
+    padding: '4px 8px 4px 0', borderBottom: `1px solid #eef1f5`,
+  },
+
+  totalsBox: {
+    marginTop: '0.75rem', marginLeft: 'auto', width: '220px',
+    borderTop: `1px solid ${COLORS.lightBlue}`, paddingTop: '0.5rem',
+  },
+  totalRow: {
+    display: 'flex', justifyContent: 'space-between',
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, padding: '2px 0',
+  },
+  grandTotal: {
+    fontWeight: '700', color: COLORS.blue,
+    borderTop: `2px solid ${COLORS.blue}`, paddingTop: '6px', marginTop: '4px',
+  },
 };
