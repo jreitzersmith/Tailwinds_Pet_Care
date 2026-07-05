@@ -3,8 +3,9 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { COLORS, FONTS } from '../../constants.jsx';
 import AdminBookingsPanel from './AdminBookingsPanel.jsx';
 import AdminInvoicesPanel from './AdminInvoicesPanel.jsx';
+import AdminCustomersPanel from './AdminCustomersPanel.jsx';
 
-const TABS = ['Bookings', 'Invoices'];
+const TABS = ['Bookings', 'Invoices', 'Customers'];
 
 export default function AdminPage() {
   const { user, signOut } = useAuth();
@@ -35,6 +36,7 @@ export default function AdminPage() {
       <div style={styles.content}>
         {tab === 0 && <AdminBookingsPanel />}
         {tab === 1 && <AdminInvoicesPanel />}
+        {tab === 2 && <AdminCustomersPanel />}
       </div>
     </div>
   );
