@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
+import { PRICING_ZONES } from '../serviceArea/serviceAreaData.js';
 
 const STATUS_COLORS = {
   pending:     COLORS.lightBlue,
@@ -36,6 +37,17 @@ function fmt12h(timeStr) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+function fmtMoney(n) {
+  return '$' + Number(n).toFixed(2).replace(/\.00$/, '');
+}
+
+// Look up per-trip fee for a zone label (e.g. "Zone 5" → 15)
+function getZoneFee(zoneLabel) {
+  if (!zoneLabel) return null;
+  const z = PRICING_ZONES.find(p => p.label === zoneLabel);
+  return z && z.fee > 0 ? z.fee : null;
+}
+
 export default function BookingCard({ booking, canCancel, canEdit, canCopy, allServices, onCancel, onFullEdit, onCopy }) {
   const [confirming,      setConfirming]      = useState(false);
   const [cancelling,      setCancelling]      = useState(false);
@@ -49,15 +61,27 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
   const within24h   = isWithin24h(booking.booking_date);
   const time12h     = fmt12h(booking.booking_time);
 
-  // Build addon lines from allServices lookup
+  // ── Pricing calculations ───────────────────────────────────────────────
+  const primarySvc  = (allServices || []).find(s => s.id === booking.service_id);
+  const primaryUnit = primarySvc?.base_price != null ? Number(primarySvc.base_price) : null;
+  const primaryQty  = primaryUnit > 0
+    ? Math.round(Number(booking.base_price || 0) / primaryUnit)
+    : null;
+
   const addonLines = (booking.addon_service_ids || []).map(id => {
-    const svc = (allServices || []).find(s => s.id === id);
-    return svc ? { name: svc.name, price: svc.base_price } : { name: '(add-on)', price: null };
+    const svc  = (allServices || []).find(s => s.id === id);
+    const unit = svc?.base_price != null ? Number(svc.base_price) : null;
+    // Addon qty mirrors primary qty (same slot grid assumption)
+    const qty  = unit != null && primaryQty != null ? primaryQty : null;
+    const total = unit != null && qty != null ? unit * qty : null;
+    return { name: svc?.name ?? '(add-on)', unit, qty, total };
   });
 
-  // Compute addon total: total - base_price - travel_fee
-  const addonTotal = Number(booking.total_price || 0) - Number(booking.base_price || 0) - Number(booking.travel_fee || 0);
+  const travelTotal = Number(booking.travel_fee || 0);
+  const zoneFee     = getZoneFee(booking.zone);
+  const numTrips    = zoneFee && travelTotal > 0 ? Math.round(travelTotal / zoneFee) : null;
 
+  // ── Helpers ────────────────────────────────────────────────────────────
   async function confirmCancel() {
     setCancelling(true);
     await onCancel(booking.id);
@@ -115,7 +139,10 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
             <div style={styles.itemRow}>
               <span style={styles.itemName}>{booking.services?.name ?? '—'}</span>
               <span style={styles.itemPrice}>
-                {booking.base_price != null ? `$${Number(booking.base_price).toFixed(2)}` : '—'}
+                {primaryQty != null && primaryUnit != null
+                  ? `${primaryQty}× ${fmtMoney(primaryUnit)} = ${fmtMoney(primaryQty * primaryUnit)}`
+                  : fmtMoney(booking.base_price ?? 0)
+                }
               </span>
             </div>
 
@@ -124,18 +151,28 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
               <div key={i} style={styles.itemRow}>
                 <span style={styles.addonName}>+ {a.name}</span>
                 <span style={styles.itemPrice}>
-                  {a.price != null ? `$${Number(a.price).toFixed(2)}/visit` : 'included'}
+                  {a.qty != null && a.unit != null
+                    ? `${a.qty}× ${fmtMoney(a.unit)} = ${fmtMoney(a.total)}`
+                    : a.unit != null
+                      ? `${fmtMoney(a.unit)}/visit`
+                      : 'included'
+                  }
                 </span>
               </div>
             ))}
 
             {/* Travel fee */}
-            {Number(booking.travel_fee || 0) > 0 && (
+            {travelTotal > 0 && (
               <div style={styles.itemRow}>
                 <span style={styles.addonName}>
                   Travel Surcharge{booking.zone ? ` (${booking.zone})` : ''}
                 </span>
-                <span style={styles.itemPrice}>+${Number(booking.travel_fee).toFixed(2)}</span>
+                <span style={styles.itemPrice}>
+                  {numTrips != null && zoneFee != null
+                    ? `${numTrips}× ${fmtMoney(zoneFee)}/trip = ${fmtMoney(travelTotal)}`
+                    : `+${fmtMoney(travelTotal)}`
+                  }
+                </span>
               </div>
             )}
 
@@ -205,7 +242,7 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
         </div>
       )}
 
-      {/* Past booking actions (always outside expanded guard) */}
+      {/* Past booking actions (outside expanded guard) */}
       {!canEdit && canCopy && (
         <div style={{ ...styles.actionRow, marginTop: '0.5rem' }}>
           <button style={styles.copyBtn} onClick={() => onCopy(booking)}>Copy to New Dates</button>
@@ -214,21 +251,6 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
     </div>
   );
 }
-
-function Detail({ label, value, bold }) {
-  return (
-    <span style={styles.detail}>
-      <span style={styles.detailLabel}>{label}: </span>
-      <span style={{ ...styles.detailValue, ...(bold ? styles.bold : {}) }}>{value}</span>
-    </span>
-  );
-}
-
-Detail.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-  bold:  PropTypes.bool,
-};
 
 BookingCard.propTypes = {
   booking:      PropTypes.object.isRequired,
@@ -292,16 +314,18 @@ const styles = {
     display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem',
   },
   itemRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem',
   },
   itemName: {
     fontFamily: FONTS.body, fontSize: '0.88rem', color: COLORS.black, fontWeight: '600',
+    flexShrink: 0,
   },
   addonName: {
     fontFamily: FONTS.body, fontSize: '0.85rem', color: '#555', paddingLeft: '0.75rem',
   },
   itemPrice: {
     fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black,
+    textAlign: 'right', whiteSpace: 'nowrap',
   },
   totalDivider: {
     borderTop: `1px solid #ddd`, margin: '0.35rem 0',
@@ -350,10 +374,6 @@ const styles = {
     borderRadius: '6px', padding: '0.4rem 1rem', cursor: 'pointer',
     fontFamily: FONTS.body, fontSize: '0.85rem',
   },
-  detail:      { display: 'flex', gap: '0.2rem' },
-  detailLabel: { fontFamily: FONTS.body, fontSize: '0.85rem', color: '#777' },
-  detailValue: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black },
-  bold:        { fontWeight: '700', color: COLORS.blue },
   confirmWrap: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
   cancelFeeNote: {
     fontFamily: FONTS.body, fontSize: '0.85rem', color: '#7a5800',
