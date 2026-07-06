@@ -27,18 +27,23 @@ const FILTER_OPTIONS = [
 ];
 
 // ── Booking row ───────────────────────────────────────────────────────────────
-function BookingRow({ booking, onStatusChange, onNotesChange }) {
-  const [saving,       setSaving]       = useState(false);
-  const [savingNotes,  setSavingNotes]  = useState(false);
-  const [expanded,     setExpanded]     = useState(false);
-  const [adminNotes,   setAdminNotes]   = useState(booking.admin_notes || '');
-  const [notesSaved,   setNotesSaved]   = useState(false);
+function BookingRow({ booking, onStatusChange, onNotesChange, serviceMap }) {
+  const [saving,      setSaving]      = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [expanded,    setExpanded]    = useState(false);
+  const [adminNotes,  setAdminNotes]  = useState(booking.admin_notes || '');
+  const [notesSaved,  setNotesSaved]  = useState(false);
+  const [emailSent,   setEmailSent]   = useState(false);
 
   const ss = statusStyle(booking.status);
 
   const dateRange = booking.booking_end_date && booking.booking_end_date !== booking.booking_date
     ? `${booking.booking_date} – ${booking.booking_end_date}`
     : booking.booking_date;
+
+  const addonNames = (booking.addon_service_ids || [])
+    .map(id => serviceMap[id] || id)
+    .filter(Boolean);
 
   async function handleStatusChange(e) {
     const newStatus = e.target.value;
@@ -50,6 +55,14 @@ function BookingRow({ booking, onStatusChange, onNotesChange }) {
     setSaving(false);
     if (error) { alert(`Update failed: ${error.message}`); return; }
     onStatusChange(booking.id, newStatus);
+
+    // Fire confirmation email when status changes to confirmed
+    if (newStatus === 'confirmed') {
+      supabase.functions
+        .invoke('send-booking-email', { body: { bookingId: booking.id } })
+        .then(() => { setEmailSent(true); setTimeout(() => setEmailSent(false), 4000); })
+        .catch(err => console.warn('Email notification failed:', err));
+    }
   }
 
   async function handleSaveNotes() {
@@ -69,9 +82,7 @@ function BookingRow({ booking, onStatusChange, onNotesChange }) {
     <div style={styles.row}>
       <div style={styles.rowMain} onClick={() => setExpanded(x => !x)}>
         <div style={styles.rowLeft}>
-          <span style={styles.customerName}>
-            {booking.customers?.full_name || '—'}
-          </span>
+          <span style={styles.customerName}>{booking.customers?.full_name || '—'}</span>
           <span style={styles.customerEmail}>{booking.customers?.email || '—'}</span>
         </div>
         <div style={styles.rowMid}>
@@ -85,9 +96,7 @@ function BookingRow({ booking, onStatusChange, onNotesChange }) {
           <span style={{ ...styles.badge, background: ss.bg, color: ss.color }}>
             {booking.status.replace(/_/g, ' ')}
           </span>
-          <span style={styles.price}>
-            ${Number(booking.total_price || 0).toFixed(2)}
-          </span>
+          <span style={styles.price}>${Number(booking.total_price || 0).toFixed(2)}</span>
           <span style={styles.expandCaret}>{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
@@ -98,30 +107,64 @@ function BookingRow({ booking, onStatusChange, onNotesChange }) {
           <div style={styles.detailGrid}>
             <span style={styles.detailLabel}>Booking ID</span>
             <span style={styles.detailValue} title={booking.id}>{booking.id.slice(0, 8)}…</span>
+
+            <span style={styles.detailLabel}>Airline</span>
+            <span style={styles.detailValue}>{booking.customers?.airline || '—'}</span>
+
+            <span style={styles.detailLabel}>Phone</span>
+            <span style={styles.detailValue}>{booking.customers?.phone || '—'}</span>
+
+            <span style={styles.detailLabel}>Start Date</span>
+            <span style={styles.detailValue}>{booking.booking_date || '—'}</span>
+
+            {booking.booking_end_date && booking.booking_end_date !== booking.booking_date && (
+              <>
+                <span style={styles.detailLabel}>End Date</span>
+                <span style={styles.detailValue}>{booking.booking_end_date}</span>
+              </>
+            )}
+
+            <span style={styles.detailLabel}>Time</span>
+            <span style={styles.detailValue}>{booking.booking_time || '—'}</span>
+
+            <span style={styles.detailLabel}>Primary Service</span>
+            <span style={styles.detailValue}>{booking.services?.name || '—'}</span>
+
+            {addonNames.length > 0 && (
+              <>
+                <span style={styles.detailLabel}>Add-On Services</span>
+                <span style={styles.detailValue}>{addonNames.join(', ')}</span>
+              </>
+            )}
+
             <span style={styles.detailLabel}>Zone</span>
             <span style={styles.detailValue}>{booking.zone || '—'}</span>
+
             <span style={styles.detailLabel}>Travel Fee</span>
             <span style={styles.detailValue}>${Number(booking.travel_fee || 0).toFixed(2)}</span>
+
             <span style={styles.detailLabel}>Base Price</span>
             <span style={styles.detailValue}>${Number(booking.base_price || 0).toFixed(2)}</span>
+
             <span style={styles.detailLabel}>Total</span>
             <span style={{ ...styles.detailValue, fontWeight: '700', color: COLORS.blue }}>
               ${Number(booking.total_price || 0).toFixed(2)}
             </span>
-            <span style={styles.detailLabel}>Airline</span>
-            <span style={styles.detailValue}>{booking.customers?.airline || '—'}</span>
-            <span style={styles.detailLabel}>Booking Time</span>
-            <span style={styles.detailValue}>{booking.booking_time || '—'}</span>
+
             <span style={styles.detailLabel}>Created</span>
             <span style={styles.detailValue}>
-              {booking.created_at ? new Date(booking.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+              {booking.created_at
+                ? new Date(booking.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                : '—'}
             </span>
-            {booking.special_instructions && (
-              <>
-                <span style={styles.detailLabel}>Customer Notes</span>
-                <span style={styles.detailValue}>{booking.special_instructions}</span>
-              </>
-            )}
+          </div>
+
+          {/* Customer notes — always visible */}
+          <div style={styles.customerNotesSection}>
+            <span style={styles.customerNotesLabel}>Customer Notes</span>
+            <p style={styles.customerNotesValue}>
+              {booking.special_instructions || <em style={{ color: COLORS.lightBlue }}>No notes provided.</em>}
+            </p>
           </div>
 
           {/* Status change */}
@@ -139,6 +182,7 @@ function BookingRow({ booking, onStatusChange, onNotesChange }) {
               ))}
             </select>
             {saving && <span style={styles.savingNote}>Saving…</span>}
+            {emailSent && <span style={styles.emailSentNote}>✉ Confirmation email sent</span>}
           </div>
 
           {/* Admin notes */}
@@ -173,14 +217,27 @@ BookingRow.propTypes = {
   booking:        PropTypes.object.isRequired,
   onStatusChange: PropTypes.func.isRequired,
   onNotesChange:  PropTypes.func.isRequired,
+  serviceMap:     PropTypes.object.isRequired,
 };
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 export default function AdminBookingsPanel() {
-  const [bookings, setBookings] = useState([]);
-  const [filter,   setFilter]   = useState('all');
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState(null);
+  const [bookings,       setBookings]       = useState([]);
+  const [filter,         setFilter]         = useState('all');
+  const [hideCancelled,  setHideCancelled]  = useState(false);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState(null);
+  const [serviceMap,     setServiceMap]     = useState({});
+
+  useEffect(() => {
+    supabase.from('services').select('id, name').then(({ data }) => {
+      if (data) {
+        const map = {};
+        data.forEach(svc => { map[svc.id] = svc.name; });
+        setServiceMap(map);
+      }
+    });
+  }, []);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -190,8 +247,8 @@ export default function AdminBookingsPanel() {
       .select(`
         id, booking_date, booking_end_date, booking_time, status,
         base_price, travel_fee, total_price, zone, special_instructions,
-        admin_notes, created_at, updated_at,
-        customers ( email, full_name, airline ),
+        admin_notes, addon_service_ids, created_at, updated_at,
+        customers ( email, full_name, airline, phone ),
         services  ( name ),
         pets      ( name, species )
       `)
@@ -221,33 +278,50 @@ export default function AdminBookingsPanel() {
     );
   }
 
+  const displayedBookings = bookings.filter(b => {
+    if (hideCancelled && filter === 'all' && b.status === 'cancelled') return false;
+    return true;
+  });
+
   return (
     <div>
-      <div style={styles.filterRow}>
-        {FILTER_OPTIONS.map(opt => (
-          <button
-            key={opt.key}
-            style={{ ...styles.filterBtn, ...(filter === opt.key ? styles.filterBtnActive : {}) }}
-            onClick={() => setFilter(opt.key)}
-          >
-            {opt.label}
-          </button>
-        ))}
+      <div style={styles.filterBar}>
+        <div style={styles.filterRow}>
+          {FILTER_OPTIONS.map(opt => (
+            <button
+              key={opt.key}
+              style={{ ...styles.filterBtn, ...(filter === opt.key ? styles.filterBtnActive : {}) }}
+              onClick={() => setFilter(opt.key)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <label style={styles.hideToggle}>
+          <input
+            type='checkbox'
+            checked={hideCancelled}
+            onChange={e => setHideCancelled(e.target.checked)}
+            style={{ marginRight: '0.4rem' }}
+          />
+          Hide Cancelled
+        </label>
       </div>
 
       {loading && <p style={styles.msg}>Loading bookings…</p>}
       {error   && <p style={styles.err}>{error}</p>}
-      {!loading && !error && bookings.length === 0 && (
+      {!loading && !error && displayedBookings.length === 0 && (
         <p style={styles.empty}>No bookings found.</p>
       )}
-      {!loading && !error && bookings.length > 0 && (
+      {!loading && !error && displayedBookings.length > 0 && (
         <div style={styles.list}>
-          {bookings.map(b => (
+          {displayedBookings.map(b => (
             <BookingRow
               key={b.id}
               booking={b}
               onStatusChange={handleStatusChange}
               onNotesChange={handleNotesChange}
+              serviceMap={serviceMap}
             />
           ))}
         </div>
@@ -258,60 +332,71 @@ export default function AdminBookingsPanel() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
-  filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' },
+  filterBar:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' },
+  filterRow:      { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' },
   filterBtn: {
     padding: '0.4rem 1rem', borderRadius: '20px', border: `1px solid ${COLORS.lightBlue}`,
     background: 'none', fontFamily: FONTS.body, fontSize: '0.85rem',
     color: COLORS.lightBlue, cursor: 'pointer',
   },
-  filterBtnActive: {
-    background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue, fontWeight: '600',
+  filterBtnActive: { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue, fontWeight: '600' },
+  hideToggle: {
+    display: 'flex', alignItems: 'center', fontFamily: FONTS.body,
+    fontSize: '0.85rem', color: COLORS.lightBlue, cursor: 'pointer', userSelect: 'none',
   },
   list:  { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
   msg:   { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
   err:   { fontFamily: FONTS.body, color: COLORS.red, padding: '1rem' },
   empty: { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
 
-  row: {
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
-    overflow: 'hidden', background: '#fff',
-  },
+  row: { border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px', overflow: 'hidden', background: '#fff' },
   rowMain: {
     display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem',
     padding: '0.85rem 1.1rem', cursor: 'pointer',
   },
-  rowLeft: { flex: '1 1 160px', display: 'flex', flexDirection: 'column', gap: '2px' },
-  customerName: { fontFamily: FONTS.body, fontWeight: '600', fontSize: '0.9rem', color: COLORS.black },
+  rowLeft:       { flex: '1 1 160px', display: 'flex', flexDirection: 'column', gap: '2px' },
+  customerName:  { fontFamily: FONTS.body, fontWeight: '600', fontSize: '0.9rem', color: COLORS.black },
   customerEmail: { fontFamily: FONTS.body, fontSize: '0.78rem', color: COLORS.lightBlue },
 
-  rowMid: { flex: '2 1 240px', display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1.25rem' },
+  rowMid:  { flex: '2 1 240px', display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1.25rem' },
   service: { fontFamily: FONTS.body, fontSize: '0.88rem', color: COLORS.black },
   pet:     { fontFamily: FONTS.body, fontSize: '0.82rem', color: COLORS.lightBlue },
   dates:   { fontFamily: FONTS.body, fontSize: '0.82rem', color: COLORS.black },
 
-  rowRight: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' },
+  rowRight:    { display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' },
   badge: {
     padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem',
     fontWeight: '600', fontFamily: FONTS.body, textTransform: 'capitalize',
   },
-  price: { fontFamily: FONTS.body, fontWeight: '700', color: COLORS.blue, fontSize: '0.9rem' },
+  price:       { fontFamily: FONTS.body, fontWeight: '700', color: COLORS.blue, fontSize: '0.9rem' },
   expandCaret: { fontFamily: FONTS.body, color: COLORS.lightBlue, fontSize: '0.75rem' },
 
   rowDetail: { borderTop: `1px solid ${COLORS.lightBlue}`, padding: '0.9rem 1.1rem', background: '#fafcff' },
   detailGrid: {
-    display: 'grid', gridTemplateColumns: '130px 1fr', gap: '0.3rem 1rem',
+    display: 'grid', gridTemplateColumns: '140px 1fr', gap: '0.3rem 1rem',
     marginBottom: '0.9rem', fontFamily: FONTS.body, fontSize: '0.85rem',
   },
   detailLabel: { color: COLORS.lightBlue, textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em', alignSelf: 'center' },
   detailValue: { color: COLORS.black },
 
-  statusRow: { display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' },
-  statusLabel: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
+  customerNotesSection: { borderTop: `1px solid ${COLORS.lightBlue}`, paddingTop: '0.75rem', marginBottom: '0.9rem' },
+  customerNotesLabel: {
+    display: 'block', fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
+  },
+  customerNotesValue: {
+    fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black,
+    margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5,
+  },
+
+  statusRow:    { display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' },
+  statusLabel:  { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue },
   statusSelect: {
     padding: '0.35rem 0.75rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`,
     fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, cursor: 'pointer',
   },
-  savingNote: { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.lightBlue, fontStyle: 'italic' },
+  savingNote:   { fontFamily: FONTS.body, fontSize: '0.8rem', color: COLORS.lightBlue, fontStyle: 'italic' },
+  emailSentNote: { fontFamily: FONTS.body, fontSize: '0.8rem', color: '#155724', fontWeight: '600' },
 
   notesSection: { borderTop: `1px dashed ${COLORS.lightBlue}`, paddingTop: '0.85rem' },
   notesLabel: {
@@ -323,7 +408,7 @@ const styles = {
     border: `1px solid ${COLORS.lightBlue}`, fontFamily: FONTS.body, fontSize: '0.875rem',
     color: COLORS.black, resize: 'vertical', boxSizing: 'border-box', outline: 'none',
   },
-  notesFooter: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' },
+  notesFooter:   { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' },
   saveNotesBtn: {
     padding: '0.35rem 1rem', background: COLORS.blue, color: COLORS.white,
     border: 'none', borderRadius: '6px', fontFamily: FONTS.body, fontSize: '0.85rem',

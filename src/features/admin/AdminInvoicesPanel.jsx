@@ -2,11 +2,13 @@ import { useEffect, useState, useCallback } from 'react';
 import supabase from '../../utils/supabase.js';
 import { COLORS, FONTS, CONTACT, BUSINESS } from '../../constants.jsx';
 import AdminInvoiceEditor from './AdminInvoiceEditor.jsx';
+import InvoiceReviewModal from './InvoiceReviewModal.jsx';
 import PropTypes from 'prop-types';
 
 const STATUS_STYLE = {
   pending_company_review:  { label: 'Pending Review',    bg: '#FFF3CD', color: '#856404' },
   pending_customer_review: { label: 'Pending Customer',  bg: '#CCE5FF', color: '#004085' },
+  invoice_approved:        { label: 'Invoice Approved',  bg: '#D4EDDA', color: '#155724' },
   awaiting_payment:        { label: 'Awaiting Payment',  bg: '#FFE5B4', color: '#8a4e00' },
   paid:                    { label: 'Paid',              bg: '#D4EDDA', color: '#155724' },
 };
@@ -19,6 +21,7 @@ const FILTER_OPTIONS = [
   { key: 'all',                    label: 'All' },
   { key: 'pending_company_review', label: 'Pending Review' },
   { key: 'pending_customer_review',label: 'Pending Customer' },
+  { key: 'invoice_approved',       label: 'Invoice Approved' },
   { key: 'awaiting_payment',       label: 'Awaiting Payment' },
   { key: 'paid',                   label: 'Paid' },
 ];
@@ -82,7 +85,7 @@ ${invoice.notes ? `<p style="margin-top:16px;font-size:.875rem;color:#555;"><str
 }
 
 // ── Invoice row card ──────────────────────────────────────────────────────────
-function InvoiceRow({ invoice, onEdit }) {
+function InvoiceRow({ invoice, onEdit, onReview }) {
   const [expanded, setExpanded] = useState(false);
 
   const cfg = statusCfg(invoice.status);
@@ -97,7 +100,6 @@ function InvoiceRow({ invoice, onEdit }) {
 
   return (
     <div style={styles.row}>
-      {/* Collapsed header — always visible */}
       <div style={styles.rowTop} onClick={() => setExpanded(x => !x)}>
         <div style={styles.rowTopLeft}>
           <span style={styles.invoiceNum}>{invoice.invoice_number}</span>
@@ -110,7 +112,6 @@ function InvoiceRow({ invoice, onEdit }) {
         </div>
       </div>
 
-      {/* Compact detail bar — always visible below header */}
       <div style={styles.rowBody}>
         <div style={styles.detail}>
           <span style={styles.detailLabel}>Customer</span>
@@ -130,12 +131,19 @@ function InvoiceRow({ invoice, onEdit }) {
           <span style={{ ...styles.detailValue, fontWeight: '700', color: COLORS.blue }}>{amountDisplay}</span>
         </div>
         <div style={styles.rowActions}>
+          {invoice.status === 'pending_company_review' && (
+            <button
+              style={{ ...styles.actionBtn, ...styles.approveBtn }}
+              onClick={e => { e.stopPropagation(); onReview(invoice); }}
+            >
+              Approve
+            </button>
+          )}
           <button style={styles.actionBtn} onClick={e => { e.stopPropagation(); onEdit(invoice); }}>Edit</button>
           <button style={styles.actionBtn} onClick={e => { e.stopPropagation(); openInvoicePDF(invoice, customerEmail); }}>PDF</button>
         </div>
       </div>
 
-      {/* Expanded detail section */}
       {expanded && (
         <div style={styles.expandedDetail}>
           <div style={styles.expandedGrid}>
@@ -187,7 +195,6 @@ function InvoiceRow({ invoice, onEdit }) {
                 <p style={styles.expandValue}>{invoice.service_name || 'No line items'}</p>
               )}
 
-              {/* Totals */}
               <div style={styles.totalsBox}>
                 {invoice.subtotal != null && (
                   <div style={styles.totalRow}>
@@ -222,19 +229,21 @@ function InvoiceRow({ invoice, onEdit }) {
 }
 
 InvoiceRow.propTypes = {
-  invoice: PropTypes.object.isRequired,
-  onEdit:  PropTypes.func.isRequired,
+  invoice:  PropTypes.object.isRequired,
+  onEdit:   PropTypes.func.isRequired,
+  onReview: PropTypes.func.isRequired,
 };
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 export default function AdminInvoicesPanel() {
-  const [invoices,   setInvoices]   = useState([]);
-  const [customers,  setCustomers]  = useState([]);
-  const [filter,     setFilter]     = useState('all');
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState(null);
+  const [invoices,     setInvoices]     = useState([]);
+  const [customers,    setCustomers]    = useState([]);
+  const [filter,       setFilter]       = useState('all');
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+  const [editorOpen,   setEditorOpen]   = useState(false);
+  const [editTarget,   setEditTarget]   = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null);
 
   useEffect(() => {
     supabase
@@ -260,9 +269,11 @@ export default function AdminInvoicesPanel() {
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
-  function openNew()         { setEditTarget(null);    setEditorOpen(true); }
-  function openEdit(invoice) { setEditTarget(invoice); setEditorOpen(true); }
-  function closeEditor()     { setEditorOpen(false);   setEditTarget(null); }
+  function openNew()           { setEditTarget(null);     setEditorOpen(true); }
+  function openEdit(invoice)   { setEditTarget(invoice);  setEditorOpen(true); }
+  function closeEditor()       { setEditorOpen(false);    setEditTarget(null); }
+  function openReview(invoice) { setReviewTarget(invoice); }
+  function closeReview()       { setReviewTarget(null); }
 
   function handleSave(saved, isNew) {
     if (isNew) {
@@ -271,6 +282,11 @@ export default function AdminInvoicesPanel() {
       setInvoices(prev => prev.map(inv => inv.id === saved.id ? saved : inv));
     }
     closeEditor();
+  }
+
+  function handleReviewSent(updatedInvoice) {
+    setInvoices(prev => prev.map(inv => inv.id === updatedInvoice.id ? updatedInvoice : inv));
+    closeReview();
   }
 
   return (
@@ -290,7 +306,7 @@ export default function AdminInvoicesPanel() {
         <button style={styles.newBtn} onClick={openNew}>+ New Invoice</button>
       </div>
 
-      {loading && <p style={styles.msg}>Loading invoices…</p>}
+      {loading && <p style={styles.msg}>Loading invoices...</p>}
       {error   && <p style={styles.err}>{error}</p>}
       {!loading && !error && invoices.length === 0 && (
         <p style={styles.empty}>No invoices found.</p>
@@ -298,7 +314,7 @@ export default function AdminInvoicesPanel() {
       {!loading && !error && invoices.length > 0 && (
         <div style={styles.list}>
           {invoices.map(inv => (
-            <InvoiceRow key={inv.id} invoice={inv} onEdit={openEdit} />
+            <InvoiceRow key={inv.id} invoice={inv} onEdit={openEdit} onReview={openReview} />
           ))}
         </div>
       )}
@@ -311,6 +327,14 @@ export default function AdminInvoicesPanel() {
           onClose={closeEditor}
         />
       )}
+
+      {reviewTarget && (
+        <InvoiceReviewModal
+          invoice={reviewTarget}
+          onSent={handleReviewSent}
+          onClose={closeReview}
+        />
+      )}
     </div>
   );
 }
@@ -320,7 +344,7 @@ const styles = {
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' },
   filterRow: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' },
   filterBtn: {
-    padding: '0.4rem 1rem', borderRadius: '20px', border: `1px solid ${COLORS.lightBlue}`,
+    padding: '0.4rem 1rem', borderRadius: '20px', border: '1px solid ' + COLORS.lightBlue,
     background: 'none', fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue, cursor: 'pointer',
   },
   filterBtnActive: { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue, fontWeight: '600' },
@@ -333,13 +357,10 @@ const styles = {
   err:   { fontFamily: FONTS.body, color: COLORS.red, padding: '1rem' },
   empty: { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
 
-  row: {
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
-    background: '#fff', overflow: 'hidden',
-  },
+  row: { border: '1px solid ' + COLORS.lightBlue, borderRadius: '10px', background: '#fff', overflow: 'hidden' },
   rowTop: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '0.75rem 1.25rem', borderBottom: `1px solid #eef1f5`,
+    padding: '0.75rem 1.25rem', borderBottom: '1px solid #eef1f5',
     cursor: 'pointer', background: '#f8fbff',
   },
   rowTopLeft: { display: 'flex', alignItems: 'center', gap: '0.6rem' },
@@ -350,22 +371,18 @@ const styles = {
   summaryAmount: { fontFamily: FONTS.body, fontWeight: '700', color: COLORS.blue, fontSize: '0.9rem' },
   expandCaret: { fontFamily: FONTS.body, color: COLORS.lightBlue, fontSize: '0.75rem' },
 
-  rowBody: {
-    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem',
-    padding: '0.75rem 1.25rem',
-  },
+  rowBody: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem 1.25rem' },
   detail: { display: 'flex', flexDirection: 'column', flex: '1 1 120px' },
   detailLabel: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' },
   detailValue: { fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black },
   rowActions: { display: 'flex', gap: '0.5rem', marginLeft: 'auto' },
   actionBtn: {
-    padding: '0.3rem 0.85rem', background: 'none', border: `1px solid ${COLORS.blue}`,
+    padding: '0.3rem 0.85rem', background: 'none', border: '1px solid ' + COLORS.blue,
     borderRadius: '6px', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.82rem', cursor: 'pointer',
   },
+  approveBtn: { background: COLORS.blue, color: COLORS.white, fontWeight: '600' },
 
-  expandedDetail: {
-    borderTop: `1px dashed ${COLORS.lightBlue}`, padding: '1rem 1.25rem', background: '#fafcff',
-  },
+  expandedDetail: { borderTop: '1px dashed ' + COLORS.lightBlue, padding: '1rem 1.25rem', background: '#fafcff' },
   expandedGrid: { display: 'flex', gap: '1.5rem', flexWrap: 'wrap' },
   expandedCol: { flex: 1, minWidth: '160px' },
   expandLabel: {
@@ -378,23 +395,11 @@ const styles = {
   lineTh: {
     fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
     textTransform: 'uppercase', letterSpacing: '0.05em',
-    borderBottom: `2px solid ${COLORS.blue}`, paddingBottom: '4px', paddingRight: '8px',
+    borderBottom: '2px solid ' + COLORS.blue, paddingBottom: '4px', paddingRight: '8px',
   },
-  lineTd: {
-    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black,
-    padding: '4px 8px 4px 0', borderBottom: `1px solid #eef1f5`,
-  },
+  lineTd: { fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, padding: '4px 8px 4px 0', borderBottom: '1px solid #eef1f5' },
 
-  totalsBox: {
-    marginTop: '0.75rem', marginLeft: 'auto', width: '220px',
-    borderTop: `1px solid ${COLORS.lightBlue}`, paddingTop: '0.5rem',
-  },
-  totalRow: {
-    display: 'flex', justifyContent: 'space-between',
-    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, padding: '2px 0',
-  },
-  grandTotal: {
-    fontWeight: '700', color: COLORS.blue,
-    borderTop: `2px solid ${COLORS.blue}`, paddingTop: '6px', marginTop: '4px',
-  },
+  totalsBox: { marginTop: '0.75rem', marginLeft: 'auto', width: '220px', borderTop: '1px solid ' + COLORS.lightBlue, paddingTop: '0.5rem' },
+  totalRow: { display: 'flex', justifyContent: 'space-between', fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, padding: '2px 0' },
+  grandTotal: { fontWeight: '700', color: COLORS.blue, borderTop: '2px solid ' + COLORS.blue, paddingTop: '6px', marginTop: '4px' },
 };

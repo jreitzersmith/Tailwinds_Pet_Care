@@ -8,6 +8,8 @@ import useLoadGoogleMaps from '../serviceArea/useLoadGoogleMaps.js';
 const DFW_BOUNDS = { north: 33.35, south: 32.35, east: -96.45, west: -97.65 };
 
 const BLANK = {
+  phone: '',
+  airline: '',
   address: '',
   preferred_vet_name: '',
   preferred_vet_clinic: '',
@@ -31,17 +33,18 @@ export default function AccountSettings() {
   const addrInputRef = useRef(null);
   const acRef        = useRef(null);
 
-  // Load customer profile
   useEffect(() => {
     async function load() {
       const { data, error } = await supabase
         .from('customers')
-        .select('address, preferred_vet_name, preferred_vet_clinic, preferred_vet_phone, preferred_vet_address')
+        .select('phone, airline, address, preferred_vet_name, preferred_vet_clinic, preferred_vet_phone, preferred_vet_address')
         .eq('id', user.id)
         .single();
       if (error) { setFetchErr(error.message); }
       else {
         setProfile({
+          phone:                 data.phone                 ?? '',
+          airline:               data.airline               ?? '',
           address:               data.address               ?? '',
           preferred_vet_name:    data.preferred_vet_name    ?? '',
           preferred_vet_clinic:  data.preferred_vet_clinic  ?? '',
@@ -54,7 +57,6 @@ export default function AccountSettings() {
     load();
   }, [user.id]);
 
-  // Init Places Autocomplete once Maps API is ready and the input is mounted
   useEffect(() => {
     if (!mapsLoaded || !addrInputRef.current || acRef.current) return;
     (async () => {
@@ -86,6 +88,8 @@ export default function AccountSettings() {
   async function handleSave() {
     setSaving(true); setSaveErr(null);
     const { error } = await supabase.from('customers').update({
+      phone:                 profile.phone                 || null,
+      airline:               profile.airline               || null,
       address:               profile.address               || null,
       preferred_vet_name:    profile.preferred_vet_name    || null,
       preferred_vet_clinic:  profile.preferred_vet_clinic  || null,
@@ -102,6 +106,37 @@ export default function AccountSettings() {
 
   return (
     <div style={s.wrap}>
+
+      {/* Contact Information */}
+      <section style={s.section}>
+        <h2 style={s.sectionHead}>Contact Information</h2>
+        <p style={s.hint}>Your phone number and airline — helps us reach you during your trips.</p>
+        <div style={s.grid}>
+          <label style={s.label}>Phone Number
+            <input
+              style={s.input}
+              type='tel'
+              value={profile.phone}
+              onChange={e => update('phone', e.target.value)}
+              placeholder='(214) 555-0100'
+            />
+          </label>
+          <label style={s.label}>Affiliated Airline
+            <select
+              style={s.select}
+              value={profile.airline}
+              onChange={e => update('airline', e.target.value)}
+            >
+              <option value=''>None / Not Affiliated</option>
+              <option value='Southwest'>Southwest Airlines</option>
+              <option value='American'>American Airlines</option>
+              <option value='United'>United Airlines</option>
+              <option value='Delta'>Delta Air Lines</option>
+              <option value='Other'>Other</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       {/* Service Address */}
       <section style={s.section}>
@@ -151,9 +186,7 @@ export default function AccountSettings() {
       {/* Payment Methods — Phase 3 */}
       <section style={{ ...s.section, marginTop: '2rem', borderBottom: 'none' }}>
         <h2 style={s.sectionHead}>Payment Methods</h2>
-        <p style={s.hint}>
-          Securely save a credit card or PayPal account for faster checkout.
-        </p>
+        <p style={s.hint}>Securely save a credit card or PayPal account for faster checkout.</p>
         <div style={s.paymentPlaceholder}>
           <span style={s.paymentIcon}>💳</span>
           <p style={s.paymentMsg}>
@@ -182,6 +215,12 @@ const s = {
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
     outline: 'none', fontFamily: FONTS.body,
   },
+  select: {
+    padding: '0.55rem 0.75rem', borderRadius: '6px',
+    border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
+    outline: 'none', fontFamily: FONTS.body, background: COLORS.white,
+    color: COLORS.black, cursor: 'pointer',
+  },
   grid:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 1rem' },
   errMsg: { fontFamily: FONTS.body, color: COLORS.red, marginBottom: '0.75rem' },
   okMsg:  { fontFamily: FONTS.body, color: '#2a7a3b', marginBottom: '0.75rem' },
@@ -192,9 +231,7 @@ const s = {
     padding: '1rem 1.25rem', marginTop: '0.5rem',
   },
   paymentIcon: { fontSize: '1.8rem', flexShrink: 0 },
-  paymentMsg: {
-    fontFamily: FONTS.body, fontSize: '0.875rem', color: '#777', margin: 0, lineHeight: 1.5,
-  },
+  paymentMsg:  { fontFamily: FONTS.body, fontSize: '0.875rem', color: '#777', margin: 0, lineHeight: 1.5 },
   saveBtn: {
     padding: '0.65rem 2rem', background: COLORS.blue, color: COLORS.white,
     border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer',

@@ -3,25 +3,23 @@ import supabase from '../../utils/supabase.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { COLORS, FONTS, CONTACT, BUSINESS } from '../../constants.jsx';
 
-// ── Status config ────────────────────────────────────────────────────────────
 const STATUS = {
   pending_company_review:  { label: 'Pending Tailwinds Review', bg: '#FFF3CD', color: '#856404' },
-  pending_customer_review: { label: 'Pending Your Review',     bg: '#CCE5FF', color: '#004085' },
-  awaiting_payment:        { label: 'Awaiting Payment',        bg: '#FFE5B4', color: '#8a4e00' },
-  paid:                    { label: 'Paid',                    bg: '#D4EDDA', color: '#155724' },
+  pending_customer_review: { label: 'Pending Your Review',      bg: '#CCE5FF', color: '#004085' },
+  invoice_approved:        { label: 'Invoice Approved',         bg: '#D4EDDA', color: '#155724' },
+  awaiting_payment:        { label: 'Awaiting Payment',         bg: '#FFE5B4', color: '#8a4e00' },
+  paid:                    { label: 'Paid',                     bg: '#D4EDDA', color: '#155724' },
 };
 
 function statusBadge(status) {
-  const cfg = STATUS[status] || { label: status, bg: '#eee', color: '#333' };
-  return cfg;
+  return STATUS[status] || { label: status, bg: '#eee', color: '#333' };
 }
 
-// ── PDF generation ────────────────────────────────────────────────────────────
 function openInvoicePDF(invoice, userEmail) {
-  const cfg      = statusBadge(invoice.status);
+  const cfg       = statusBadge(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
-    ? `${invoice.booking_date} – ${invoice.booking_end_date}`
-    : (invoice.booking_date || '—');
+    ? `${invoice.booking_date} - ${invoice.booking_end_date}`
+    : (invoice.booking_date || '---');
 
   const lineItemsHTML = (() => {
     if (invoice.line_items && Array.isArray(invoice.line_items) && invoice.line_items.length) {
@@ -29,33 +27,18 @@ function openInvoicePDF(invoice, userEmail) {
         <tr>
           <td style="padding:6px 0;border-bottom:1px solid #eee;">${li.description || ''}</td>
           <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">${li.qty ?? 1}</td>
-          <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">
-            ${li.unit_price != null ? '$' + Number(li.unit_price).toFixed(2) : '—'}
-          </td>
-          <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">
-            ${li.total != null ? '$' + Number(li.total).toFixed(2) : '—'}
-          </td>
+          <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">${li.unit_price != null ? '$' + Number(li.unit_price).toFixed(2) : '---'}</td>
+          <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">${li.total != null ? '$' + Number(li.total).toFixed(2) : '---'}</td>
         </tr>`).join('');
     }
-    // Fallback: single line for standard bookings
     return `
       <tr>
         <td style="padding:6px 0;border-bottom:1px solid #eee;">${invoice.service_name || 'Pet Care Service'}</td>
         <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">
-          ${invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '—'}
-        </td>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">
-          ${invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '—'}
-        </td>
+        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">${invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '---'}</td>
+        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">${invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '---'}</td>
       </tr>
-      ${Number(invoice.travel_fee) > 0 ? `
-      <tr>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">$${Number(invoice.travel_fee).toFixed(2)}</td>
-        <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">$${Number(invoice.travel_fee).toFixed(2)}</td>
-      </tr>` : ''}`;
+      ${Number(invoice.travel_fee) > 0 ? `<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td><td style="padding:6px 0;text-align:center;">1</td><td style="padding:6px 0;text-align:right;">$${Number(invoice.travel_fee).toFixed(2)}</td><td style="padding:6px 0;text-align:right;">$${Number(invoice.travel_fee).toFixed(2)}</td></tr>` : ''}`;
   })();
 
   const win = window.open('', '_blank');
@@ -90,73 +73,35 @@ function openInvoicePDF(invoice, userEmail) {
 </head>
 <body>
   <h1>${BUSINESS.name}</h1>
-  <p class="sub">${CONTACT.address} &nbsp;|&nbsp; ${CONTACT.phone} &nbsp;|&nbsp; ${CONTACT.email}</p>
-
+  <p class="sub">${CONTACT.address} | ${CONTACT.phone} | ${CONTACT.email}</p>
   <div class="grid">
-    <div class="col">
-      <h3>Invoice</h3>
-      <p><strong>${invoice.invoice_number}</strong></p>
-      <p>Date: ${new Date(invoice.created_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
-    </div>
-    <div class="col">
-      <h3>Billed To</h3>
-      <p>${userEmail || '—'}</p>
-    </div>
-    <div class="col">
-      <h3>Service Details</h3>
-      <p>Pet: ${invoice.pet_name || '—'}</p>
-      <p>Date(s): ${dateRange}</p>
-      ${invoice.zone ? `<p>Zone: ${invoice.zone}</p>` : ''}
-    </div>
+    <div class="col"><h3>Invoice</h3><p><strong>${invoice.invoice_number}</strong></p><p>Date: ${new Date(invoice.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p></div>
+    <div class="col"><h3>Billed To</h3><p>${userEmail || '---'}</p></div>
+    <div class="col"><h3>Service Details</h3><p>Pet: ${invoice.pet_name || '---'}</p><p>Date(s): ${dateRange}</p>${invoice.zone ? `<p>Zone: ${invoice.zone}</p>` : ''}</div>
   </div>
-
   <span class="badge">${cfg.label}</span>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Description</th>
-        <th style="text-align:center;">Qty</th>
-        <th style="text-align:right;">Unit Price</th>
-        <th style="text-align:right;">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${lineItemsHTML}</tbody>
-  </table>
-
-  <table class="totals">
-    <tbody>
-      ${invoice.subtotal != null ? `<tr><td>Subtotal</td><td>$${Number(invoice.subtotal).toFixed(2)}</td></tr>` : ''}
-      ${Number(invoice.travel_fee) > 0 ? `<tr><td>Travel Fee</td><td>$${Number(invoice.travel_fee).toFixed(2)}</td></tr>` : ''}
-      <tr class="grand">
-        <td>Total</td>
-        <td>${invoice.total_amount != null ? '$' + Number(invoice.total_amount).toFixed(2) : invoice.has_custom_items ? 'Quote Pending' : '—'}</td>
-      </tr>
-    </tbody>
-  </table>
-
+  <table><thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${lineItemsHTML}</tbody></table>
+  <table class="totals"><tbody>
+    ${invoice.subtotal != null ? `<tr><td>Subtotal</td><td>$${Number(invoice.subtotal).toFixed(2)}</td></tr>` : ''}
+    ${Number(invoice.travel_fee) > 0 ? `<tr><td>Travel Fee</td><td>$${Number(invoice.travel_fee).toFixed(2)}</td></tr>` : ''}
+    <tr class="grand"><td>Total</td><td>${invoice.total_amount != null ? '$' + Number(invoice.total_amount).toFixed(2) : invoice.has_custom_items ? 'Quote Pending' : '---'}</td></tr>
+  </tbody></table>
   ${invoice.notes ? `<p style="margin-top:16px;font-size:0.875rem;color:#555;"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
-
-  <div class="footer">
-    <p>Thank you for choosing ${BUSINESS.name}! Questions? Reach us at ${CONTACT.email} or ${CONTACT.phone}.</p>
-  </div>
-
+  <div class="footer"><p>Thank you for choosing ${BUSINESS.name}! Questions? Reach us at ${CONTACT.email} or ${CONTACT.phone}.</p></div>
   <script>window.onload = () => window.print();<\/script>
-</body>
-</html>`);
+</body></html>`);
   win.document.close();
 }
 
-// ── Invoice card ─────────────────────────────────────────────────────────────
 function InvoiceCard({ invoice, userEmail }) {
   const cfg = statusBadge(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
-    ? `${invoice.booking_date} – ${invoice.booking_end_date}`
-    : (invoice.booking_date || '—');
+    ? `${invoice.booking_date} - ${invoice.booking_end_date}`
+    : (invoice.booking_date || '---');
 
   const amountDisplay = invoice.total_amount != null
     ? `$${Number(invoice.total_amount).toFixed(2)}`
-    : invoice.has_custom_items ? 'Quote pending' : '—';
+    : invoice.has_custom_items ? 'Quote pending' : '---';
 
   return (
     <div style={styles.card}>
@@ -166,18 +111,18 @@ function InvoiceCard({ invoice, userEmail }) {
           <span style={{ ...styles.badge, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
         </div>
         <button style={styles.pdfBtn} onClick={() => openInvoicePDF(invoice, userEmail)}>
-          ↓ PDF
+          PDF
         </button>
       </div>
 
       <div style={styles.cardBody}>
         <div style={styles.detail}>
           <span style={styles.detailLabel}>Service</span>
-          <span style={styles.detailValue}>{invoice.service_name || '—'}</span>
+          <span style={styles.detailValue}>{invoice.service_name || '---'}</span>
         </div>
         <div style={styles.detail}>
           <span style={styles.detailLabel}>Pet</span>
-          <span style={styles.detailValue}>{invoice.pet_name || '—'}</span>
+          <span style={styles.detailValue}>{invoice.pet_name || '---'}</span>
         </div>
         <div style={styles.detail}>
           <span style={styles.detailLabel}>Date(s)</span>
@@ -189,9 +134,16 @@ function InvoiceCard({ invoice, userEmail }) {
         </div>
       </div>
 
+      {invoice.status === 'invoice_approved' && (
+        <p style={styles.approvedNote}>
+          Your invoice has been approved. Please use the button in your approval email to pay, or contact us at{' '}
+          <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>.
+        </p>
+      )}
+
       {invoice.status === 'paid' && invoice.paid_at && (
         <p style={styles.paidNote}>
-          Paid on {new Date(invoice.paid_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+          Paid on {new Date(invoice.paid_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}
         </p>
       )}
 
@@ -202,7 +154,6 @@ function InvoiceCard({ invoice, userEmail }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function InvoicesList() {
   const { user } = useAuth();
   const [invoices, setInvoices] = useState([]);
@@ -221,7 +172,7 @@ export default function InvoicesList() {
         .order('created_at', { ascending: false });
 
       if (filter === 'pending') {
-        query = query.in('status', ['pending_company_review', 'pending_customer_review', 'awaiting_payment']);
+        query = query.in('status', ['pending_company_review', 'pending_customer_review', 'invoice_approved', 'awaiting_payment']);
       } else if (filter === 'paid') {
         query = query.eq('status', 'paid');
       }
@@ -253,7 +204,7 @@ export default function InvoicesList() {
         ))}
       </div>
 
-      {loading && <p style={styles.msg}>Loading invoices…</p>}
+      {loading && <p style={styles.msg}>Loading invoices...</p>}
       {error   && <p style={styles.err}>{error}</p>}
 
       {!loading && !error && invoices.length === 0 && (
@@ -272,73 +223,44 @@ export default function InvoicesList() {
 
       <p style={styles.helpNote}>
         Questions about an invoice? Contact us at{' '}
-        <a href={`mailto:${CONTACT.email}`} style={styles.link}>{CONTACT.email}</a>{' '}
+        <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>{' '}
         or {CONTACT.phone}.
       </p>
     </div>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
-  filterRow: {
-    display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap',
-  },
+  filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' },
   filterBtn: {
-    padding: '0.4rem 1rem', borderRadius: '20px', border: `1px solid ${COLORS.lightBlue}`,
-    background: 'none', fontFamily: FONTS.body, fontSize: '0.85rem',
-    color: COLORS.lightBlue, cursor: 'pointer',
+    padding: '0.4rem 1rem', borderRadius: '20px', border: '1px solid ' + COLORS.lightBlue,
+    background: 'none', fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.lightBlue, cursor: 'pointer',
   },
-  filterBtnActive: {
-    background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue, fontWeight: '600',
-  },
+  filterBtnActive: { background: COLORS.blue, color: COLORS.white, borderColor: COLORS.blue, fontWeight: '600' },
   list:  { display: 'flex', flexDirection: 'column', gap: '1rem' },
   msg:   { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
   err:   { fontFamily: FONTS.body, color: COLORS.red, padding: '1rem' },
   empty: { fontFamily: FONTS.body, color: COLORS.lightBlue, textAlign: 'center', padding: '2rem' },
 
-  card: {
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
-    padding: '1rem 1.25rem', background: '#fff',
-  },
+  card: { border: '1px solid ' + COLORS.lightBlue, borderRadius: '10px', padding: '1rem 1.25rem', background: '#fff' },
   cardTop: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem',
   },
-  invoiceNum: {
-    fontFamily: FONTS.header, fontSize: '1rem', color: COLORS.blue,
-    fontWeight: '600', marginRight: '0.75rem',
-  },
-  badge: {
-    display: 'inline-block', padding: '3px 10px', borderRadius: '20px',
-    fontSize: '0.78rem', fontWeight: '600', fontFamily: FONTS.body,
-  },
+  invoiceNum: { fontFamily: FONTS.header, fontSize: '1rem', color: COLORS.blue, fontWeight: '600', marginRight: '0.75rem' },
+  badge: { display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600', fontFamily: FONTS.body },
   pdfBtn: {
-    padding: '0.35rem 0.9rem', background: 'none', border: `1px solid ${COLORS.blue}`,
-    borderRadius: '6px', color: COLORS.blue, fontFamily: FONTS.body,
-    fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap',
+    padding: '0.35rem 0.9rem', background: 'none', border: '1px solid ' + COLORS.blue,
+    borderRadius: '6px', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.82rem', cursor: 'pointer',
   },
-  cardBody: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-    gap: '0.5rem',
-  },
+  cardBody: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' },
   detail: { display: 'flex', flexDirection: 'column' },
-  detailLabel: {
-    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
-    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px',
-  },
+  detailLabel: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' },
   detailValue: { fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black },
 
-  paidNote: {
-    marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem',
-    color: '#155724', fontStyle: 'italic',
-  },
-  notes: {
-    marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#555',
-  },
-  helpNote: {
-    marginTop: '2rem', fontFamily: FONTS.body, fontSize: '0.82rem',
-    color: COLORS.lightBlue, textAlign: 'center',
-  },
+  approvedNote: { marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#155724' },
+  paidNote: { marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#155724', fontStyle: 'italic' },
+  notes:    { marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#555' },
+  helpNote: { marginTop: '2rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: COLORS.lightBlue, textAlign: 'center' },
   link: { color: COLORS.blue },
 };

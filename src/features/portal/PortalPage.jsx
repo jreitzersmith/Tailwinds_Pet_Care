@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { COLORS, FONTS } from '../../constants.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import supabase from '../../utils/supabase.js';
@@ -11,9 +11,18 @@ import InvoicesList from './InvoicesList.jsx';
 
 const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Invoices', 'Account'];
 
+// Maps the ?tab= query param value to a tab index
+function resolveInitialTab(searchParams) {
+  const param = searchParams.get('tab')?.toLowerCase();
+  if (!param) return 0;
+  const idx = TABS.findIndex(t => t.toLowerCase().replace(/\s+/g, '') === param.replace(/\s+/g, ''));
+  return idx >= 0 ? idx : 0;
+}
+
 export default function PortalPage() {
   const { user, signOut } = useAuth();
-  const [tab, setTab] = useState(0);
+  const [searchParams]    = useSearchParams();
+  const [tab, setTab]     = useState(() => resolveInitialTab(searchParams));
   const [setupDone, setSetupDone] = useState(true); // optimistic: avoid flash
 
   useEffect(() => {
@@ -85,11 +94,11 @@ const styles = {
   },
   signOutBtn: {
     padding: '0.6rem 1.25rem', background: COLORS.white, color: COLORS.lightBlue,
-    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '8px', fontSize: '0.9rem',
+    border: '1px solid ' + COLORS.lightBlue, borderRadius: '8px', fontSize: '0.9rem',
     fontFamily: FONTS.body, cursor: 'pointer',
   },
   tabs: {
-    display: 'flex', borderBottom: `2px solid ${COLORS.lightBlue}`, marginBottom: '1.5rem',
+    display: 'flex', borderBottom: '2px solid ' + COLORS.lightBlue, marginBottom: '1.5rem',
   },
   tab: {
     padding: '0.65rem 1.25rem', background: 'none', border: 'none',
