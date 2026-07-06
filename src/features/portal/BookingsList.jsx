@@ -11,6 +11,7 @@ export default function BookingsList({ filter }) {
   const navigate    = useNavigate();
   const [bookings,     setBookings]     = useState([]);
   const [customerPets, setCustomerPets] = useState([]);
+  const [allServices,  setAllServices]  = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
 
@@ -24,6 +25,12 @@ export default function BookingsList({ filter }) {
       .eq('customer_id', user.id).order('name')
       .then(({ data }) => { if (data) setCustomerPets(data); });
   }, [user.id]);
+
+  useEffect(() => {
+    supabase.from('services').select('id, name, base_price, category')
+      .eq('is_active', true)
+      .then(({ data }) => { if (data) setAllServices(data); });
+  }, []);
 
   async function fetchBookings() {
     setLoading(true);
@@ -125,6 +132,7 @@ export default function BookingsList({ filter }) {
           canCancel={filter === 'upcoming' && b.status !== 'cancelled'}
           canEdit={filter === 'upcoming'   && b.status !== 'cancelled'}
           canCopy={filter === 'past'}
+          allServices={allServices}
           customerPets={customerPets}
           onCancel={handleCancel}
           onFullEdit={handleFullEdit}

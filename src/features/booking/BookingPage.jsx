@@ -8,6 +8,26 @@ import ScheduleStep from './steps/ScheduleStep.jsx';
 import PetStep from './steps/PetStep.jsx';
 import ConfirmStep from './steps/ConfirmStep.jsx';
 
+const DEFAULT_SLOT_ROWS = [
+  { id: 'morning', label: 'Morning' },
+  { id: 'evening', label: 'Evening' },
+];
+
+// Pre-check morning + evening for every date in range so the slot grid
+// is pre-populated when editing. (Slot selections are not persisted to DB.)
+function buildDefaultSlots(startDate, endDate) {
+  if (!startDate) return {};
+  const slots = {};
+  const curr  = new Date(startDate + 'T00:00:00');
+  const last  = new Date((endDate || startDate) + 'T00:00:00');
+  while (curr <= last) {
+    const d = curr.toISOString().split('T')[0];
+    slots[d] = { morning: true, evening: true };
+    curr.setDate(curr.getDate() + 1);
+  }
+  return slots;
+}
+
 export default function BookingPage() {
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -35,6 +55,18 @@ export default function BookingPage() {
     travelFee:           Number(editBooking.travelFee || 0),
     totalPrice:          Number(editBooking.totalPrice || 0),
     specialInstructions: editBooking.specialInstructions || '',
+    // Reconstruct slot state from booking dates (actual selections not persisted to DB)
+    serviceSlots:    buildDefaultSlots(editBooking.bookingDate, editBooking.bookingEndDate),
+    serviceSlotRows: [...DEFAULT_SLOT_ROWS],
+    addonSlots:      Object.fromEntries(
+      (editBooking.addonIds || []).map(id => [
+        id,
+        buildDefaultSlots(editBooking.bookingDate, editBooking.bookingEndDate),
+      ])
+    ),
+    addonSlotRows:   Object.fromEntries(
+      (editBooking.addonIds || []).map(id => [id, [...DEFAULT_SLOT_ROWS]])
+    ),
   } : copyFrom ? {
     serviceId:           copyFrom.service_id   || null,
     serviceName:         copyFrom.serviceName  || '',
