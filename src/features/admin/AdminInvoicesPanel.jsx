@@ -31,6 +31,114 @@ function fmt(val) {
   return '$' + Number(val).toFixed(2);
 }
 
+// Build an array of date strings between start and end (inclusive)
+function buildDateRange(startStr, endStr) {
+  if (!startStr) return [];
+  const end = endStr && endStr !== startStr ? endStr : startStr;
+  const dates = [];
+  const cur = new Date(startStr + 'T12:00:00');
+  const last = new Date(end + 'T12:00:00');
+  while (cur <= last) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function fmtDateCol(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function fmt12h(timeStr) {
+  if (!timeStr) return null;
+  const [h, m] = timeStr.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12  = h % 12 || 12;
+  return h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+}
+
+// ── Schedule table ────────────────────────────────────────────────────────────
+function ScheduleTable({ invoice, servicesMap }) {
+  const booking   = invoice.bookings;
+  const dates     = buildDateRange(invoice.booking_date, invoice.booking_end_date);
+  const mainSvc   = booking?.services;
+  const addonIds  = booking?.addon_service_ids || [];
+  const timeLabel = fmt12h(booking?.booking_time);
+
+  // Rows: main service + add-ons
+  const rows = [];
+  if (mainSvc) {
+    rows.push({ id: mainSvc.id, name: mainSvc.name, isMain: true });
+  } else if (invoice.service_name) {
+    rows.push({ id: 'main', name: invoice.service_name, isMain: true });
+  }
+  addonIds.forEach(id => {
+    const svc = servicesMap[id];
+    rows.push({ id, name: svc ? svc.name : 'Add-on', isMain: false });
+  });
+
+  if (rows.length === 0 || dates.length === 0) return null;
+
+  // Clamp displayed date columns so the table doesn't overflow on long stays
+  const MAX_COLS = 10;
+  const displayDates = dates.slice(0, MAX_COLS);
+  const truncated    = dates.length > MAX_COLS;
+
+  return (
+    <div style={styles.scheduleWrap}>
+      <div style={styles.scheduleHeader}>
+        <span style={styles.scheduleTitle}>
+          {timeLabel ? 'Service Schedule — ' + timeLabel : 'Service Schedule'}
+        </span>
+        {dates.length > 1 && (
+          <span style={styles.scheduleDayCount}>{dates.length} day{dates.length > 1 ? 's' : ''}</span>
+        )}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={styles.schedTable}>
+          <thead>
+            <tr>
+              <th style={{ ...styles.schedTh, textAlign: 'left', minWidth: '160px' }}>Service</th>
+              {displayDates.map(d => (
+                <th key={d} style={{ ...styles.schedTh, textAlign: 'center', minWidth: '44px' }}>
+                  {fmtDateCol(d)}
+                </th>
+              ))}
+              {truncated && (
+                <th style={{ ...styles.schedTh, textAlign: 'center', color: COLORS.lightBlue }}>
+                  +{dates.length - MAX_COLS}
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id}>
+                <td style={{ ...styles.schedTd, fontWeight: row.isMain ? '600' : '400', paddingLeft: row.isMain ? 0 : '0.75rem' }}>
+                  {!row.isMain && <span style={{ color: COLORS.lightBlue, marginRight: '4px' }}>+</span>}
+                  {row.name}
+                </td>
+                {displayDates.map(d => (
+                  <td key={d} style={{ ...styles.schedTd, textAlign: 'center', color: '#28A745', fontWeight: '700' }}>
+                    ✓
+                  </td>
+                ))}
+                {truncated && <td style={{ ...styles.schedTd, textAlign: 'center', color: COLORS.lightBlue }}>…</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+ScheduleTable.propTypes = {
+  invoice:     PropTypes.object.isRequired,
+  servicesMap: PropTypes.object.isRequired,
+};
+
 // ── PDF renderer ──────────────────────────────────────────────────────────────
 function openInvoicePDF(invoice, customerEmail, servicesMap) {
   const cfg = statusCfg(invoice.status);
@@ -38,7 +146,6 @@ function openInvoicePDF(invoice, customerEmail, servicesMap) {
     ? invoice.booking_date + ' – ' + invoice.booking_end_date
     : (invoice.booking_date || '—');
 
-  // Build line items for PDF: prefer explicit line_items, fall back to booking selections
   let lineItemsHTML = '';
   if (invoice.line_items && invoice.line_items.length > 0) {
     lineItemsHTML = invoice.line_items.map(li =>
@@ -53,42 +160,17 @@ function openInvoicePDF(invoice, customerEmail, servicesMap) {
     const booking = invoice.bookings;
     const mainService = booking?.services;
     if (mainService) {
-      lineItemsHTML +=
-        '<tr>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;">' + mainService.name + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(booking.base_price) + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(booking.base_price) + '</td>' +
-        '</tr>';
+      lineItemsHTML += '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">' + mainService.name + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(booking.base_price) + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(booking.base_price) + '</td></tr>';
     } else {
-      lineItemsHTML +=
-        '<tr>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;">' + (invoice.service_name || 'Pet Care Service') + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.subtotal) + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.subtotal) + '</td>' +
-        '</tr>';
+      lineItemsHTML += '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">' + (invoice.service_name || 'Pet Care Service') + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.subtotal) + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.subtotal) + '</td></tr>';
     }
-    const addonIds = booking?.addon_service_ids || [];
-    addonIds.forEach(id => {
+    (booking?.addon_service_ids || []).forEach(id => {
       const svc = servicesMap[id];
       if (!svc) return;
-      lineItemsHTML +=
-        '<tr>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;">' + svc.name + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(svc.base_price) + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(svc.base_price) + '</td>' +
-        '</tr>';
+      lineItemsHTML += '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">' + svc.name + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(svc.base_price) + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(svc.base_price) + '</td></tr>';
     });
     if (Number(invoice.travel_fee) > 0) {
-      lineItemsHTML +=
-        '<tr>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.travel_fee) + '</td>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.travel_fee) + '</td>' +
-        '</tr>';
+      lineItemsHTML += '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.travel_fee) + '</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + fmt(invoice.travel_fee) + '</td></tr>';
     }
   }
 
@@ -106,9 +188,9 @@ function openInvoicePDF(invoice, customerEmail, servicesMap) {
 '@media print{body{padding:20px}}</style></head><body>' +
 '<h1>' + BUSINESS.name + '</h1><p class="sub">' + CONTACT.address + ' | ' + CONTACT.phone + ' | ' + CONTACT.email + '</p>' +
 '<div class="grid">' +
-'  <div class="col"><h3>Invoice</h3><p><strong>' + invoice.invoice_number + '</strong></p><p>Date: ' + new Date(invoice.created_at).toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'}) + '</p></div>' +
-'  <div class="col"><h3>Billed To</h3><p>' + (customerEmail || '—') + '</p></div>' +
-'  <div class="col"><h3>Service Details</h3><p>Pet: ' + (invoice.pet_name || '—') + '</p><p>Date(s): ' + dateRange + '</p>' + (invoice.zone ? '<p>Zone: ' + invoice.zone + '</p>' : '') + '</div>' +
+'<div class="col"><h3>Invoice</h3><p><strong>' + invoice.invoice_number + '</strong></p><p>Date: ' + new Date(invoice.created_at).toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'}) + '</p></div>' +
+'<div class="col"><h3>Billed To</h3><p>' + (customerEmail || '—') + '</p></div>' +
+'<div class="col"><h3>Service Details</h3><p>Pet: ' + (invoice.pet_name || '—') + '</p><p>Date(s): ' + dateRange + '</p>' + (invoice.zone ? '<p>Zone: ' + invoice.zone + '</p>' : '') + '</div>' +
 '</div>' +
 '<span class="badge">' + cfg.label + '</span>' +
 '<table><thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Amount</th></tr></thead><tbody>' + lineItemsHTML + '</tbody></table>' +
@@ -200,11 +282,12 @@ function InvoiceRow({ invoice, onEdit, onReview, servicesMap }) {
     ? fmt(invoice.total_amount)
     : (invoice.has_custom_items ? 'Quote pending' : '—');
 
-  // Summary of customer selections for the compact row
-  const addonCount  = invoice.bookings?.addon_service_ids?.length || 0;
+  const addonCount     = invoice.bookings?.addon_service_ids?.length || 0;
   const serviceSummary = addonCount > 0
     ? (invoice.service_name || 'Service') + ' + ' + addonCount + ' add-on' + (addonCount > 1 ? 's' : '')
     : (invoice.service_name || '—');
+
+  const hasSchedule = !!(invoice.booking_date && invoice.bookings);
 
   return (
     <div style={styles.row}>
@@ -254,6 +337,13 @@ function InvoiceRow({ invoice, onEdit, onReview, servicesMap }) {
 
       {expanded && (
         <div style={styles.expandedDetail}>
+          {/* Schedule grid */}
+          {hasSchedule && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <ScheduleTable invoice={invoice} servicesMap={servicesMap} />
+            </div>
+          )}
+
           <div style={styles.expandedGrid}>
             <div style={styles.expandedCol}>
               <p style={styles.expandLabel}>Invoice #</p>
@@ -273,7 +363,7 @@ function InvoiceRow({ invoice, onEdit, onReview, servicesMap }) {
             </div>
 
             <div style={{ flex: 2 }}>
-              {/* Customer-selected services from booking */}
+              {/* Customer-selected services */}
               <p style={styles.expandLabel}>Customer Selections</p>
               <CustomerSelectionsTable invoice={invoice} servicesMap={servicesMap} />
 
@@ -356,7 +446,6 @@ export default function AdminInvoicesPanel() {
   const [editTarget,   setEditTarget]   = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
 
-  // Fetch customers + services lookup once
   useEffect(() => {
     supabase
       .from('customers')
@@ -381,7 +470,7 @@ export default function AdminInvoicesPanel() {
     setError(null);
     let query = supabase
       .from('invoices')
-      .select('*, customers(email, full_name), bookings(service_id, base_price, addon_service_ids, services(id, name, base_price))')
+      .select('*, customers(email, full_name), bookings(service_id, base_price, addon_service_ids, booking_time, services(id, name, base_price))')
       .order('created_at', { ascending: false });
     if (filter !== 'all') query = query.eq('status', filter);
     const { data, error: err } = await query;
@@ -399,11 +488,8 @@ export default function AdminInvoicesPanel() {
   function closeReview()       { setReviewTarget(null); }
 
   function handleSave(saved, isNew) {
-    if (isNew) {
-      setInvoices(prev => [saved, ...prev]);
-    } else {
-      setInvoices(prev => prev.map(inv => inv.id === saved.id ? saved : inv));
-    }
+    if (isNew) setInvoices(prev => [saved, ...prev]);
+    else       setInvoices(prev => prev.map(inv => inv.id === saved.id ? saved : inv));
     closeEditor();
   }
 
@@ -531,4 +617,28 @@ const styles = {
   totalsBox: { marginTop: '0.75rem', marginLeft: 'auto', width: '220px', borderTop: '1px solid ' + COLORS.lightBlue, paddingTop: '0.5rem' },
   totalRow: { display: 'flex', justifyContent: 'space-between', fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black, padding: '2px 0' },
   grandTotal: { fontWeight: '700', color: COLORS.blue, borderTop: '2px solid ' + COLORS.blue, paddingTop: '6px', marginTop: '4px' },
+
+  // Schedule table
+  scheduleWrap: {
+    border: '1px solid ' + COLORS.lightBlue, borderRadius: '8px',
+    overflow: 'hidden', background: '#fff',
+  },
+  scheduleHeader: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '0.5rem 0.85rem', background: '#f0f6fd',
+    borderBottom: '1px solid ' + COLORS.lightBlue,
+  },
+  scheduleTitle: { fontFamily: FONTS.body, fontSize: '0.78rem', fontWeight: '700', color: COLORS.blue, textTransform: 'uppercase', letterSpacing: '0.05em' },
+  scheduleDayCount: { fontFamily: FONTS.body, fontSize: '0.75rem', color: COLORS.lightBlue },
+  schedTable: { width: '100%', borderCollapse: 'collapse' },
+  schedTh: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    borderBottom: '1px solid #eef1f5', padding: '0.4rem 0.6rem',
+    background: '#fafcff',
+  },
+  schedTd: {
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black,
+    padding: '0.35rem 0.6rem', borderBottom: '1px solid #f0f4f8',
+  },
 };
