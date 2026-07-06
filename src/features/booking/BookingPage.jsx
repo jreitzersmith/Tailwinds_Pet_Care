@@ -46,6 +46,7 @@ export default function BookingPage() {
     baseUnitPrice:       0,   // resolved from live DB price in ServiceStep
     isQuote:             false,
     addonIds:            editBooking.addonIds       || [],
+    addonNames:          editBooking.addonNames      || [],
     petId:               editBooking.petId          || null,
     petName:             editBooking.petName        || '',
     petIsNew:            false,
@@ -73,6 +74,7 @@ export default function BookingPage() {
     basePrice:           Number(copyFrom.base_price || 0),
     isQuote:             false,
     addonIds:            copyFrom.addon_service_ids || [],
+    addonNames:          copyFrom.addonNames        || [],
     petId:               copyFrom.pet_id       || null,
     petIsNew:            false,
     zone:                copyFrom.zone         || null,
