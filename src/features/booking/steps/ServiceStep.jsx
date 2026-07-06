@@ -299,18 +299,64 @@ export default function ServiceStep({ booking }) {
   function handleSlotChange(newSlots) {
     const n    = countChecked(newSlots);
     const unit = form.baseUnitPrice || Number(selectedPrimary?.base_price || 0);
-    update({ serviceSlots: newSlots, basePrice: unit * n });
+    // Cascade parent unchecks to all addon slots
+    const prevSlots     = form.serviceSlots || {};
+    const newAddonSlots = { ...(form.addonSlots || {}) };
+    let addonChanged    = false;
+    (form.addonIds || []).forEach(addonId => {
+      const addonSlots = { ...(newAddonSlots[addonId] || {}) };
+      let innerChanged = false;
+      Object.keys(prevSlots).forEach(date => {
+        Object.keys(prevSlots[date] || {}).forEach(rowId => {
+          if (prevSlots[date][rowId] && !newSlots?.[date]?.[rowId]) {
+            if (addonSlots[date]?.[rowId]) {
+              addonSlots[date] = { ...(addonSlots[date] || {}), [rowId]: false };
+              innerChanged = true;
+            }
+          }
+        });
+      });
+      if (innerChanged) { newAddonSlots[addonId] = addonSlots; addonChanged = true; }
+    });
+    const updates = { serviceSlots: newSlots, basePrice: unit * n };
+    if (addonChanged) {
+      const newAddonTotal = (form.addonIds || []).reduce((sum, id) => {
+        const svc = allServices.find(s => s.id === id);
+        if (!svc || svc.base_price === null) return sum;
+        return sum + Number(svc.base_price) * countChecked(newAddonSlots[id] || {});
+      }, 0);
+      updates.addonSlots = newAddonSlots;
+      updates.addonTotal = newAddonTotal;
+    }
+    update(updates);
   }
   function handleRowsChange(newRows) { update({ serviceSlotRows: newRows }); }
 
   function handleAddonSlotChange(addonId, newSlots) {
     const newAddonSlots = { ...(form.addonSlots || {}), [addonId]: newSlots };
+    // Auto-check parent for any addon slot that is now checked but parent is not
+    const parentSlots = { ...(form.serviceSlots || {}) };
+    let parentChanged = false;
+    Object.entries(newSlots).forEach(([date, daySlots]) => {
+      Object.entries(daySlots || {}).forEach(([rowId, checked]) => {
+        if (checked && !parentSlots?.[date]?.[rowId]) {
+          parentSlots[date] = { ...(parentSlots[date] || {}), [rowId]: true };
+          parentChanged = true;
+        }
+      });
+    });
     const newTotal = (form.addonIds || []).reduce((sum, id) => {
       const svc = allServices.find(s => s.id === id);
       if (!svc || svc.base_price === null) return sum;
       return sum + Number(svc.base_price) * countChecked(newAddonSlots[id] || {});
     }, 0);
-    update({ addonSlots: newAddonSlots, addonTotal: newTotal });
+    const updates = { addonSlots: newAddonSlots, addonTotal: newTotal };
+    if (parentChanged) {
+      const unit = form.baseUnitPrice || Number(selectedPrimary?.base_price || 0);
+      updates.serviceSlots = parentSlots;
+      updates.basePrice    = unit * countChecked(parentSlots);
+    }
+    update(updates);
   }
   function handleAddonRowsChange(addonId, newRows) {
     update({ addonSlotRows: { ...(form.addonSlotRows || {}), [addonId]: newRows } });
