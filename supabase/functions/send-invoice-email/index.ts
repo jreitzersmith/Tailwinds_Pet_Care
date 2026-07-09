@@ -1,5 +1,5 @@
 // Supabase Edge Function: send-invoice-email
-// Sets invoice status to invoice_approved and emails the customer an
+// Issues the invoice (status -> awaiting_payment) and emails the customer an
 // itemized invoice with a portal payment link.
 //
 // Required secret (Supabase Dashboard → Edge Functions → Secrets):
@@ -204,11 +204,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'No customer email on record' }), { status: 422, headers: CORS })
     }
 
-    // Advance status to invoice_approved (only from pending_company_review)
-    if (invoice.status === 'pending_company_review') {
+    // Issue the invoice: advance draft/pending_customer_review to awaiting_payment.
+    if (invoice.status === 'draft' || invoice.status === 'pending_customer_review') {
       const { error: updateErr } = await supabaseAdmin
         .from('invoices')
-        .update({ status: 'invoice_approved', updated_at: new Date().toISOString() })
+        .update({ status: 'awaiting_payment', issued_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', invoiceId)
 
       if (updateErr) {
@@ -216,7 +216,7 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Failed to update invoice status' }), { status: 500, headers: CORS })
       }
 
-      invoice.status = 'invoice_approved'
+      invoice.status = 'awaiting_payment'
     }
 
     const transporter = nodemailer.createTransport({
