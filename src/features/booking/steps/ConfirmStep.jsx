@@ -4,18 +4,9 @@ import supabase from '../../../utils/supabase.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { COLORS, FONTS } from '../../../constants.jsx';
 import { getZoneForPoint } from '../../serviceArea/serviceAreaData.js';
-
-function countChecked(slots) {
-  return Object.values(slots || {}).reduce(
-    (sum, day) => sum + Object.values(day || {}).filter(Boolean).length, 0
-  );
-}
-
-function countDays(slots) {
-  return Object.keys(slots || {}).filter(date =>
-    Object.values(slots[date] || {}).some(Boolean)
-  ).length;
-}
+import {
+  buildVisitRows, summarizeVisits, groupLineItems, buildInvoiceSnapshot, fmtMoney,
+} from '../visitModel.js';
 
 async function lookupTravelFee(address) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -41,58 +32,38 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
   const [priceError, setPriceError]     = useState(null);
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState(null);
-  const [usingsSaved, setUsingSaved]    = useState(false);
+  const [usingSaved, setUsingSaved]     = useState(false);
   const [invoiceOpen, setInvoiceOpen]   = useState(false);
   const [allServices, setAllServices]   = useState([]);
 
   useEffect(() => {
-    supabase.from('services').select('id, name, base_price').then(({ data }) => {
+    supabase.from('services').select('id, name, base_price, price_per_pet').then(({ data }) => {
       if (data) setAllServices(data);
     });
   }, []);
 
-  function getNumDays() {
-    const dates = new Set();
-    Object.entries(form.serviceSlots || {}).forEach(([date, day]) => {
-      if (Object.values(day || {}).some(Boolean)) dates.add(date);
-    });
-    Object.values(form.addonSlots || {}).forEach(addonSlots => {
-      Object.entries(addonSlots || {}).forEach(([date, day]) => {
-        if (Object.values(day || {}).some(Boolean)) dates.add(date);
-      });
-    });
-    if (dates.size === 0 && form.bookingDate) {
-      const start = new Date(form.bookingDate);
-      const end   = new Date(form.bookingEndDate || form.bookingDate);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1))
-        dates.add(d.toISOString().split('T')[0]);
-    }
-    return Math.max(dates.size, 1);
-  }
-
-  function getUnitPrice(id) {
-    const svc = allServices.find(s => s.id === id);
-    return svc ? Number(svc.base_price || 0) : 0;
-  }
+  // ── Single source of truth: derive visits + totals from the form ──
+  const servicesById = Object.fromEntries(allServices.map(s => [s.id, s]));
+  const visitRows    = buildVisitRows(form, servicesById);
+  const lineItems    = groupLineItems(visitRows);
+  const perDayTravel = Number(form.travelFee || 0);
+  const totals       = summarizeVisits(visitRows, perDayTravel);
 
   const resolvePrice = useCallback(async () => {
     if (!addrInput.trim()) return;
     setPriceError(null);
     setPriceLoading(true);
     try {
-      const result      = await lookupTravelFee(addrInput.trim());
-      const numDays     = getNumDays();
-      const totalTravel = result.travelFee * numDays;
+      const result = await lookupTravelFee(addrInput.trim());
       setPricing(result);
-      const total = (form.basePrice || 0) + (form.addonTotal || 0) + (form.extraTotal || 0) + totalTravel;
-      update({ address: addrInput.trim(), zone: result.zoneLabel, travelFee: result.travelFee, totalPrice: total });
+      update({ address: addrInput.trim(), zone: result.zoneLabel, travelFee: result.travelFee });
     } catch (err) {
       setPriceError(err.message);
       setPricing(null);
     } finally {
       setPriceLoading(false);
     }
-  }, [addrInput, form.basePrice, form.addonTotal, form.extraTotal, update]);
+  }, [addrInput, update]);
 
   useEffect(() => {
     async function prefill() {
@@ -110,9 +81,9 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
   }, []);
 
   useEffect(() => {
-    if (usingsSaved && addrInput.trim()) resolvePrice();
+    if (usingSaved && addrInput.trim()) resolvePrice();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usingsSaved]);
+  }, [usingSaved]);
 
   async function handleSubmit() {
     if (!pricing) { setPriceError('Please enter your address to calculate the travel fee.'); return; }
@@ -120,10 +91,12 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
     setSubmitError(null);
     const isEditMode = !!form.editBookingId;
     try {
-      let petId = form.petId;
-      if (form.petIsNew && !isEditMode) {
+      // 1. Create the new inline pet, if any.
+      const petIds   = [...(form.petIds   || [])];
+      const petNames = [...(form.petNames || [])];
+      if (form.petIsNew && (form.newPet?.name || '').trim() && !isEditMode) {
         const petPayload = {
-          customer_id:       user.id,
+          customer_id:      user.id,
           name:             form.newPet.name,
           species:          form.newPet.species,
           breed:            form.newPet.breed            || null,
@@ -132,53 +105,94 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
           notes:            form.newPet.notes            || null,
           diet:             form.newPet.diet?.length     ? form.newPet.diet             : null,
           walking_schedule: form.newPet.walking_schedule?.length ? form.newPet.walking_schedule : null,
+          medications:      form.newPet.medications?.length ? form.newPet.medications : [],
         };
         const { data: newPetData, error: petErr } = await supabase
           .from('pets').insert(petPayload).select('id').single();
         if (petErr) throw new Error(petErr.message);
-        petId = newPetData.id;
+        petIds.push(newPetData.id);
+        petNames.push(form.newPet.name);
       }
-      const numDays     = getNumDays();
-      const totalTravel = (form.travelFee || 0) * numDays;
-      const totalPrice  = (form.basePrice || 0) + (form.addonTotal || 0) + (form.extraTotal || 0) + totalTravel;
-      const bookingPayload = {
-        pet_id:               petId,
+      if (petIds.length === 0) throw new Error('Please select at least one pet.');
+
+      // 2. Derive visits + invoice snapshot from the form (single source of truth).
+      const rows = buildVisitRows(form, servicesById);
+      if (rows.length === 0) throw new Error('Please select at least one visit.');
+      const snap = buildInvoiceSnapshot(rows, perDayTravel);
+      const totalPrice = snap.total_amount != null ? snap.total_amount : snap.subtotal;
+
+      const bookingCore = {
+        pet_id:               petIds[0],
         service_id:           form.serviceId,
         booking_date:         form.bookingDate,
         booking_end_date:     form.bookingEndDate || form.bookingDate,
         booking_time:         form.bookingTime || null,
         zone:                 form.zone,
-        travel_fee:           totalTravel,
-        base_price:           form.basePrice,
+        travel_fee:           snap.travel_fee,
+        base_price:           snap.subtotal,
         total_price:          totalPrice,
         special_instructions: form.specialInstructions || null,
         addon_service_ids:    [...(form.addonIds || []), ...(form.extraServiceIds || [])],
       };
+
+      let bookingId = form.editBookingId;
       if (isEditMode) {
-        const { error: bookErr } = await supabase
-          .from('bookings').update(bookingPayload).eq('id', form.editBookingId);
-        if (bookErr) throw new Error(bookErr.message);
-      } else {
-        const { data: newBooking, error: bookErr } = await supabase
-          .from('bookings').insert({ ...bookingPayload, customer_id: user.id }).select('id').single();
+        const { error: bookErr } = await supabase.from('bookings').update({
+          ...bookingCore,
+          status:         'pending_company_review',  // edited → needs re-review
+          admin_modified: false,
+          change_note:    null,
+        }).eq('id', bookingId);
         if (bookErr) throw new Error(bookErr.message);
 
-        const petLabel = form.petIsNew ? (form.newPet?.name || 'New pet') : (form.petName || '');
-        await supabase.from('invoices').insert({
-          booking_id:      newBooking.id,
-          customer_id:     user.id,
-          has_custom_items: form.isQuote,
-          status:          'pending_company_review',
-          service_name:    form.serviceName || null,
-          booking_date:    form.bookingDate || null,
-          booking_end_date: form.bookingEndDate || form.bookingDate || null,
-          pet_name:        petLabel || null,
-          zone:            form.zone ? String(form.zone) : null,
-          subtotal:        (form.basePrice || 0) + (form.addonTotal || 0) + (form.extraTotal || 0),
-          travel_fee:      totalTravel || 0,
-          total_amount:    form.isQuote ? null : totalPrice,
-        });
+        // Replace child rows.
+        await supabase.from('booking_visits').delete().eq('booking_id', bookingId);
+        await supabase.from('booking_pets').delete().eq('booking_id', bookingId);
+      } else {
+        const { data: newBooking, error: bookErr } = await supabase
+          .from('bookings').insert({ ...bookingCore, customer_id: user.id, status: 'pending_company_review' })
+          .select('id').single();
+        if (bookErr) throw new Error(bookErr.message);
+        bookingId = newBooking.id;
       }
+
+      // 3. Persist pets + visits.
+      const petRows = petIds.map((id, i) => ({
+        booking_id: bookingId, pet_id: id, pet_name: petNames[i] || null,
+      }));
+      const { error: bpErr } = await supabase.from('booking_pets').insert(petRows);
+      if (bpErr) throw new Error(bpErr.message);
+
+      const visitRowsToInsert = rows.map(r => ({ ...r, booking_id: bookingId }));
+      const { error: bvErr } = await supabase.from('booking_visits').insert(visitRowsToInsert);
+      if (bvErr) throw new Error(bvErr.message);
+
+      // 4. Sync the invoice snapshot.
+      const invoiceFields = {
+        service_name:     form.serviceName || null,
+        booking_date:     form.bookingDate || null,
+        booking_end_date: form.bookingEndDate || form.bookingDate || null,
+        pet_name:         petNames.join(', ') || null,
+        zone:             form.zone ? String(form.zone) : null,
+        line_items:       snap.line_items,
+        subtotal:         snap.subtotal,
+        travel_fee:       snap.travel_fee,
+        total_amount:     snap.total_amount,
+        has_custom_items: false,
+        updated_at:       new Date().toISOString(),
+      };
+      if (isEditMode) {
+        await supabase.from('invoices')
+          .update({ ...invoiceFields, status: 'draft' })
+          .eq('booking_id', bookingId);
+      } else {
+        await supabase.from('invoices').insert({
+          booking_id: bookingId, customer_id: user.id, status: 'draft', ...invoiceFields,
+        });
+        // Notify Tailwinds admin of the new booking (best-effort).
+        supabase.functions.invoke('send-booking-email', { body: { bookingId } }).catch(() => {});
+      }
+
       onSubmitSuccess();
     } catch (err) {
       setSubmitError(err.message);
@@ -187,29 +201,9 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
     }
   }
 
-  const petLabel     = form.petIsNew ? form.newPet.name || 'New pet' : (form.petName || '(selected pet)');
-  const numDays      = pricing ? getNumDays() : 0;
-  const totalTravel  = (form.travelFee || 0) * numDays;
-  const grandTotal   = (form.basePrice || 0) + (form.addonTotal || 0) + (form.extraTotal || 0) + totalTravel;
-  const primaryCount = countChecked(form.serviceSlots);
-  const primaryUnit  = Number(form.baseUnitPrice || 0);
-
-  const addonLines = (form.addonIds || []).map((id, i) => ({
-    name:  (form.addonNames || [])[i] || 'Add-On',
-    count: countChecked((form.addonSlots || {})[id]),
-    unit:  getUnitPrice(id),
-  }));
-
-  const extraLines = (form.extraServiceIds || []).map((id, i) => {
-    const d     = (form.extraServiceData || {})[id];
-    const count = d?.slots ? countChecked(d.slots) : (d?.date ? 1 : 0);
-    return { name: (form.extraServiceNames || [])[i] || 'Service', count, unit: getUnitPrice(id) };
-  });
-
-  function lineDetail(count, unit) {
-    if (unit <= 0) return count + '× (quote)';
-    return count + '× $' + unit.toFixed(2) + ' = $' + (count * unit).toFixed(2);
-  }
+  const petLabel = (form.petNames || []).length
+    ? form.petNames.join(', ')
+    : (form.petIsNew ? (form.newPet?.name || 'New pet') : '(selected pet)');
 
   return (
     <div>
@@ -221,8 +215,7 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
         {form.bookingEndDate && form.bookingEndDate !== form.bookingDate && (
           <Row label='End Date' value={form.bookingEndDate} />
         )}
-        <Row label='Time' value={form.bookingTime || '—'} />
-        <Row label='Pet'  value={petLabel} />
+        <Row label={ (form.petNames || []).length > 1 ? 'Pets' : 'Pet' } value={petLabel} />
         {form.transportOrigin && <Row label='Pickup'   value={form.transportOrigin} />}
         {form.transportDest   && <Row label='Drop-off' value={form.transportDest}   />}
         {(form.addonNames || []).length > 0 && (
@@ -231,10 +224,11 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
         {(form.extraServiceNames || []).length > 0 && (
           <Row label='Additional Services' value={(form.extraServiceNames || []).join(', ')} />
         )}
+        <Row label='Total Visits' value={String(visitRows.length)} />
       </div>
 
       <div style={styles.addrSection}>
-        {usingsSaved && (
+        {usingSaved && (
           <p style={styles.savedNote}>
             Using your saved service address{'—'}update below to use a different location.
           </p>
@@ -255,58 +249,34 @@ export default function ConfirmStep({ booking, onSubmitSuccess }) {
         <div style={styles.pricingBox}>
           {!invoiceOpen ? (
             <>
-              <PricingRow
-                label={form.serviceName || 'Service'}
-                value={form.isQuote ? 'Quote required' : '$' + (form.basePrice || 0).toFixed(2)} />
-              {(form.addonTotal > 0) &&
-                <PricingRow label='Add-Ons' value={'+$' + (form.addonTotal || 0).toFixed(2)} />}
-              {(form.extraTotal > 0) &&
-                <PricingRow label='Additional Services' value={'+$' + (form.extraTotal || 0).toFixed(2)} />}
+              <PricingRow label='Subtotal'
+                value={totals.hasQuote ? 'Quote required' : fmtMoney(totals.subtotal)} />
               <PricingRow label='Travel Surcharge'
-                value={totalTravel === 0 ? 'None' : '+$' + totalTravel.toFixed(2)} />
+                value={totals.travelFee === 0 ? 'None' : '+' + fmtMoney(totals.travelFee)} />
               <div style={styles.divider} />
               <PricingRow label='Total'
-                value={form.isQuote ? 'Quote pending' : '$' + grandTotal.toFixed(2)} bold />
+                value={totals.hasQuote ? 'Quote pending' : fmtMoney(totals.total)} bold />
             </>
           ) : (
             <>
-              <div style={styles.group}>
-                <p style={styles.groupLabel}>{form.serviceName || 'Service'}</p>
-                {primaryCount > 0 && (
-                  <p style={styles.groupLine}>{form.serviceName}: {lineDetail(primaryCount, primaryUnit)}</p>
-                )}
-              </div>
-
-              {addonLines.filter(l => l.count > 0).length > 0 && (
-                <div style={styles.group}>
-                  <p style={styles.groupLabel}>Add-Ons:</p>
-                  {addonLines.filter(l => l.count > 0).map((l, i) => (
-                    <p key={i} style={styles.groupLine}>{l.name}: {lineDetail(l.count, l.unit)}</p>
-                  ))}
-                </div>
-              )}
-
-              {extraLines.filter(l => l.count > 0).length > 0 && (
-                <div style={styles.group}>
-                  <p style={styles.groupLabel}>Additional Services:</p>
-                  {extraLines.filter(l => l.count > 0).map((l, i) => (
-                    <p key={i} style={styles.groupLine}>{l.name}: {lineDetail(l.count, l.unit)}</p>
-                  ))}
-                </div>
-              )}
-
-              {totalTravel > 0 && (
-                <div style={styles.group}>
-                  <p style={styles.groupLabel}>Surcharges:</p>
+              {lineItems.map((li, i) => (
+                <div key={i} style={styles.group}>
                   <p style={styles.groupLine}>
-                    Travel Surcharge: {numDays}{'×'} ${(form.travelFee || 0).toFixed(2)} = ${totalTravel.toFixed(2)}
+                    {li.description}: {li.qty}{'×'} {li.is_quote ? '(quote)' : fmtMoney(li.unit_price)}
+                    {!li.is_quote && ` = ${fmtMoney(li.total)}`}
+                  </p>
+                </div>
+              ))}
+              {totals.travelFee > 0 && (
+                <div style={styles.group}>
+                  <p style={styles.groupLine}>
+                    Travel Surcharge: {totals.distinctDates}{'×'} {fmtMoney(perDayTravel)} = {fmtMoney(totals.travelFee)}
                   </p>
                 </div>
               )}
-
               <div style={styles.divider} />
               <PricingRow label='Total'
-                value={form.isQuote ? 'Quote pending' : '$' + grandTotal.toFixed(2)} bold />
+                value={totals.hasQuote ? 'Quote pending' : fmtMoney(totals.total)} bold />
             </>
           )}
 
@@ -398,9 +368,8 @@ const styles = {
   pricingLabel: { fontFamily: FONTS.body, color: COLORS.black, fontSize: '0.95rem' },
   pricingValue: { fontFamily: FONTS.body, color: COLORS.black, fontSize: '0.95rem' },
   pricingBold:  { fontWeight: '700', color: COLORS.blue, fontSize: '1.1rem' },
-  group:      { marginBottom: '0.6rem' },
-  groupLabel: { fontFamily: FONTS.body, fontWeight: '600', color: COLORS.black, fontSize: '0.9rem', margin: '0 0 0.2rem' },
-  groupLine:  { fontFamily: FONTS.body, color: '#555', fontSize: '0.875rem', margin: '0.1rem 0 0.1rem 1rem' },
+  group:      { marginBottom: '0.3rem' },
+  groupLine:  { fontFamily: FONTS.body, color: '#555', fontSize: '0.875rem', margin: '0.1rem 0' },
   invoiceToggle: {
     background: 'none', border: 'none', cursor: 'pointer',
     color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.85rem',
