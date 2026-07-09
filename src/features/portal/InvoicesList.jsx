@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react';
 import supabase from '../../utils/supabase.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { COLORS, FONTS, CONTACT, BUSINESS } from '../../constants.jsx';
+import { groupLineItems } from '../booking/visitModel.js';
+import PayNowButton from '../payments/PayNowButton.jsx';
 
 const STATUS = {
-  pending_company_review:  { label: 'Pending Tailwinds Review', bg: '#FFF3CD', color: '#856404' },
-  pending_customer_review: { label: 'Pending Your Review',      bg: '#CCE5FF', color: '#004085' },
-  invoice_approved:        { label: 'Invoice Approved',         bg: '#D4EDDA', color: '#155724' },
+  draft:                   { label: 'Pending Tailwinds Review', bg: '#FFF3CD', color: '#856404' },
+  pending_customer_review: { label: 'Pending Your Approval',    bg: '#CCE5FF', color: '#004085' },
   awaiting_payment:        { label: 'Awaiting Payment',         bg: '#FFE5B4', color: '#8a4e00' },
   paid:                    { label: 'Paid',                     bg: '#D4EDDA', color: '#155724' },
+  void:                    { label: 'Void',                     bg: '#E2E3E5', color: '#383d41' },
 };
+
+// Statuses that show itemized details to the customer.
+const SHOW_ITEMS_STATUSES = new Set(['pending_customer_review', 'awaiting_payment', 'paid']);
 
 function statusBadge(status) {
   return STATUS[status] || { label: status, bg: '#eee', color: '#333' };
@@ -20,87 +25,30 @@ function fmt(val) {
   return '$' + Number(val).toFixed(2);
 }
 
-// ── Payment modal ─────────────────────────────────────────────────────────────
-function PaymentModal({ invoice, onClose }) {
-  const amountDisplay = invoice.total_amount != null ? fmt(invoice.total_amount) : 'See invoice';
-
-  return (
-    <div style={styles.overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={styles.modal}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>Pay Invoice {invoice.invoice_number}</h2>
-          <button style={styles.closeBtn} onClick={onClose}>X</button>
-        </div>
-
-        <div style={styles.modalBody}>
-          <div style={styles.amountBox}>
-            <span style={styles.amountLabel}>Amount Due</span>
-            <span style={styles.amountValue}>{amountDisplay}</span>
-          </div>
-
-          <p style={styles.payIntro}>
-            Choose your preferred payment method below. Online card payment is coming soon — in the
-            meantime, please use one of the options listed here or contact us to arrange payment.
-          </p>
-
-          {/* Phase 3 placeholder — Square and PayPal will mount here */}
-          <div style={styles.methodList}>
-            <div style={styles.method}>
-              <span style={styles.methodIcon}>💵</span>
-              <div>
-                <p style={styles.methodName}>Cash</p>
-                <p style={styles.methodDesc}>Pay in person at time of service.</p>
-              </div>
-            </div>
-            <div style={styles.method}>
-              <span style={styles.methodIcon}>📬</span>
-              <div>
-                <p style={styles.methodName}>Check</p>
-                <p style={styles.methodDesc}>
-                  Payable to <strong>Tailwinds Pet Care, LLC</strong>.
-                  Mail to 2500 South Blvd, Dallas, TX 75215.
-                </p>
-              </div>
-            </div>
-            <div style={styles.method}>
-              <span style={styles.methodIcon}>📱</span>
-              <div>
-                <p style={styles.methodName}>Zelle / Venmo</p>
-                <p style={styles.methodDesc}>
-                  Contact us for details:{' '}
-                  <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>{' '}
-                  or {CONTACT.phone}.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <p style={styles.payNote}>
-            Questions? Email{' '}
-            <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>{' '}
-            or call {CONTACT.phone} and we'll be happy to help.
-          </p>
-        </div>
-
-        <div style={styles.modalFooter}>
-          <button style={styles.cancelBtn} onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
+// Resolve the display rows for an invoice: prefer the stored line_items
+// snapshot; otherwise fall back to grouping the joined booking_visits.
+function resolveLineItems(invoice) {
+  if (invoice.line_items && Array.isArray(invoice.line_items) && invoice.line_items.length) {
+    return invoice.line_items;
+  }
+  const visits = invoice.bookings?.booking_visits;
+  if (visits && visits.length) return groupLineItems(visits);
+  return [];
 }
 
+// ── PDF export ────────────────────────────────────────────────────────────────
 function openInvoicePDF(invoice, userEmail) {
   const cfg       = statusBadge(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
     ? invoice.booking_date + ' - ' + invoice.booking_end_date
     : (invoice.booking_date || '---');
 
+  const items = resolveLineItems(invoice);
   const lineItemsHTML = (() => {
-    if (invoice.line_items && Array.isArray(invoice.line_items) && invoice.line_items.length) {
-      return invoice.line_items.map(li =>
+    if (items.length) {
+      return items.map(li =>
         '<tr>' +
-        '<td style="padding:6px 0;border-bottom:1px solid #eee;">' + (li.description || '') + '</td>' +
+        '<td style="padding:6px 0;border-bottom:1px solid #eee;">' + (li.description || li.service_name || '') + '</td>' +
         '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">' + (li.qty ?? 1) + '</td>' +
         '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + (li.unit_price != null ? '$' + Number(li.unit_price).toFixed(2) : '---') + '</td>' +
         '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + (li.total != null ? '$' + Number(li.total).toFixed(2) : '---') + '</td>' +
@@ -113,12 +61,13 @@ function openInvoicePDF(invoice, userEmail) {
       '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:center;">1</td>' +
       '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + (invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '---') + '</td>' +
       '<td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">' + (invoice.subtotal != null ? '$' + Number(invoice.subtotal).toFixed(2) : '---') + '</td>' +
-      '</tr>' +
-      (Number(invoice.travel_fee) > 0
-        ? '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td><td style="padding:6px 0;text-align:center;">1</td><td style="padding:6px 0;text-align:right;">$' + Number(invoice.travel_fee).toFixed(2) + '</td><td style="padding:6px 0;text-align:right;">$' + Number(invoice.travel_fee).toFixed(2) + '</td></tr>'
-        : '')
+      '</tr>'
     );
   })();
+
+  const travelHTML = Number(invoice.travel_fee) > 0
+    ? '<tr><td style="padding:6px 0;border-bottom:1px solid #eee;">Travel Surcharge</td><td style="padding:6px 0;text-align:center;">1</td><td style="padding:6px 0;text-align:right;">$' + Number(invoice.travel_fee).toFixed(2) + '</td><td style="padding:6px 0;text-align:right;">$' + Number(invoice.travel_fee).toFixed(2) + '</td></tr>'
+    : '';
 
   const win = window.open('', '_blank');
   win.document.write('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Invoice ' + invoice.invoice_number + '</title>' +
@@ -139,11 +88,11 @@ function openInvoicePDF(invoice, userEmail) {
 '<div class="col"><h3>Service Details</h3><p>Pet: ' + (invoice.pet_name || '---') + '</p><p>Date(s): ' + dateRange + '</p>' + (invoice.zone ? '<p>Zone: ' + invoice.zone + '</p>' : '') + '</div>' +
 '</div>' +
 '<span class="badge">' + cfg.label + '</span>' +
-'<table><thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Amount</th></tr></thead><tbody>' + lineItemsHTML + '</tbody></table>' +
+'<table><thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Amount</th></tr></thead><tbody>' + lineItemsHTML + travelHTML + '</tbody></table>' +
 '<table class="totals"><tbody>' +
 (invoice.subtotal != null ? '<tr><td>Subtotal</td><td>$' + Number(invoice.subtotal).toFixed(2) + '</td></tr>' : '') +
 (Number(invoice.travel_fee) > 0 ? '<tr><td>Travel Fee</td><td>$' + Number(invoice.travel_fee).toFixed(2) + '</td></tr>' : '') +
-'<tr class="grand"><td>Total</td><td>' + (invoice.total_amount != null ? '$' + Number(invoice.total_amount).toFixed(2) : invoice.has_custom_items ? 'Quote Pending' : '---') + '</td></tr>' +
+'<tr class="grand"><td>Total</td><td>' + (invoice.total_amount != null ? '$' + Number(invoice.total_amount).toFixed(2) : 'Quote Pending') + '</td></tr>' +
 '</tbody></table>' +
 (invoice.notes ? '<p style="margin-top:16px;font-size:.875rem;color:#555;"><strong>Notes:</strong> ' + invoice.notes + '</p>' : '') +
 '<div class="footer"><p>Thank you for choosing ' + BUSINESS.name + '! Questions? Reach us at ' + CONTACT.email + ' or ' + CONTACT.phone + '.</p></div>' +
@@ -151,31 +100,114 @@ function openInvoicePDF(invoice, userEmail) {
   win.document.close();
 }
 
+// ── Inline itemized totals ────────────────────────────────────────────────────
+function LineTotals({ invoice }) {
+  const travelFee = Number(invoice.travel_fee) || 0;
+  const showTravel = travelFee > 0;
+
+  return (
+    <div style={styles.lineTotals}>
+      {showTravel && (
+        <>
+          <div style={styles.lineTotalRow}>
+            <span style={styles.lineTotalLabel}>Subtotal</span>
+            <span>{fmt(invoice.subtotal)}</span>
+          </div>
+          <div style={styles.lineTotalRow}>
+            <span style={styles.lineTotalLabel}>Travel Fee</span>
+            <span>{fmt(travelFee)}</span>
+          </div>
+        </>
+      )}
+      <div style={{ ...styles.lineTotalRow, ...styles.lineTotalGrand }}>
+        <span>Total</span>
+        <span>{invoice.total_amount != null ? fmt(invoice.total_amount) : 'Quote Pending'}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline itemized line items table ──────────────────────────────────────────
+function LineItemsTable({ invoice, heading }) {
+  const travelFee = Number(invoice.travel_fee) || 0;
+  const items = resolveLineItems(invoice);
+
+  return (
+    <div style={styles.lineSection}>
+      <p style={styles.lineSectionTitle}>{heading || 'Invoice Details'}</p>
+      <table style={styles.lineTable}>
+        <thead>
+          <tr>
+            <th style={{ ...styles.lineTh, textAlign: 'left' }}>Description</th>
+            <th style={{ ...styles.lineTh, textAlign: 'center' }}>Qty</th>
+            <th style={{ ...styles.lineTh, textAlign: 'right' }}>Unit</th>
+            <th style={{ ...styles.lineTh, textAlign: 'right' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((li, i) => (
+            <tr key={i}>
+              <td style={styles.lineTd}>{li.description || li.service_name || '---'}</td>
+              <td style={{ ...styles.lineTd, textAlign: 'center' }}>{li.qty ?? 1}</td>
+              <td style={{ ...styles.lineTd, textAlign: 'right' }}>
+                {li.unit_price != null ? fmt(li.unit_price) : '---'}
+              </td>
+              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>
+                {li.is_quote ? 'Quote' : (li.total != null ? fmt(li.total) : '---')}
+              </td>
+            </tr>
+          ))}
+          {travelFee > 0 && (
+            <tr>
+              <td style={styles.lineTd}>Travel Surcharge</td>
+              <td style={{ ...styles.lineTd, textAlign: 'center' }}>1</td>
+              <td style={{ ...styles.lineTd, textAlign: 'right' }}>{fmt(travelFee)}</td>
+              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>{fmt(travelFee)}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <LineTotals invoice={invoice} />
+    </div>
+  );
+}
+
 // ── Invoice card ──────────────────────────────────────────────────────────────
-function InvoiceCard({ invoice, userEmail, onPay }) {
+function InvoiceCard({ invoice, userEmail, onApprove, onDecline, reload }) {
   const cfg = statusBadge(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
     ? invoice.booking_date + ' - ' + invoice.booking_end_date
     : (invoice.booking_date || '---');
 
-  const amountDisplay = invoice.total_amount != null
-    ? fmt(invoice.total_amount)
-    : invoice.has_custom_items ? 'Quote pending' : '---';
+  const amountDisplay = invoice.total_amount != null ? fmt(invoice.total_amount) : 'Quote pending';
 
-  const isApproved = invoice.status === 'invoice_approved';
+  const isProposed   = invoice.status === 'pending_customer_review';
+  const isAwaiting    = invoice.status === 'awaiting_payment';
+  const showItemized = SHOW_ITEMS_STATUSES.has(invoice.status);
+
+  const [busy, setBusy] = useState(false);
+
+  async function approve() {
+    setBusy(true);
+    await onApprove(invoice.booking_id);
+    setBusy(false);
+  }
+  async function decline() {
+    setBusy(true);
+    await onDecline(invoice.booking_id);
+    setBusy(false);
+  }
 
   return (
-    <div style={{ ...styles.card, ...(isApproved ? styles.cardApproved : {}) }}>
+    <div style={{ ...styles.card, ...(isAwaiting ? styles.cardApproved : {}) }}>
       <div style={styles.cardTop}>
         <div>
           <span style={styles.invoiceNum}>{invoice.invoice_number}</span>
           <span style={{ ...styles.badge, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
         </div>
         <div style={styles.cardActions}>
-          {isApproved && (
-            <button style={styles.payBtn} onClick={() => onPay(invoice)}>
-              Pay Now
-            </button>
+          {isAwaiting && (
+            <PayNowButton invoice={invoice} onPaid={reload} />
           )}
           <button style={styles.pdfBtn} onClick={() => openInvoicePDF(invoice, userEmail)}>
             PDF
@@ -202,15 +234,34 @@ function InvoiceCard({ invoice, userEmail, onPay }) {
         </div>
       </div>
 
-      {isApproved && (
+      {showItemized && (
+        <LineItemsTable
+          invoice={invoice}
+          heading={isProposed ? 'Proposed changes — please review' : 'Invoice Details'}
+        />
+      )}
+
+      {isProposed && (
+        <div style={styles.proposedBanner}>
+          <span>
+            Tailwinds proposed changes to this invoice. Please review the items above.
+          </span>
+          <div style={styles.proposedBtns}>
+            <button style={styles.approveBtn} onClick={approve} disabled={busy}>
+              {busy ? 'Working…' : 'Approve'}
+            </button>
+            <button style={styles.declineBtn} onClick={decline} disabled={busy}>
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isAwaiting && (
         <div style={styles.approvedBanner}>
           <span style={styles.approvedIcon}>✓</span>
           <span>
-            Your invoice has been approved and is ready for payment.{' '}
-            <button style={styles.approvedPayLink} onClick={() => onPay(invoice)}>
-              Click here to pay
-            </button>
-            {' '}or contact us at{' '}
+            Your invoice is ready for payment. Use <strong>Pay Now</strong> above, or contact us at{' '}
             <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>.
           </span>
         </div>
@@ -232,11 +283,13 @@ function InvoiceCard({ invoice, userEmail, onPay }) {
 // ── Main list ─────────────────────────────────────────────────────────────────
 export default function InvoicesList() {
   const { user } = useAuth();
-  const [invoices,    setInvoices]    = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState(null);
-  const [filter,      setFilter]      = useState('all');
-  const [payTarget,   setPayTarget]   = useState(null);
+  const [invoices,     setInvoices]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+  const [filter,       setFilter]       = useState('all');
+  const [reloadKey,    setReloadKey]    = useState(0);
+
+  function reload() { setReloadKey(k => k + 1); }
 
   useEffect(() => {
     async function fetchInvoices() {
@@ -244,14 +297,17 @@ export default function InvoicesList() {
       setError(null);
       let query = supabase
         .from('invoices')
-        .select('*')
+        .select('*, bookings(*, services(*), booking_visits(*), booking_pets(pet_name))')
         .eq('customer_id', user.id)
         .order('created_at', { ascending: false });
 
       if (filter === 'pending') {
-        query = query.in('status', ['pending_company_review', 'pending_customer_review', 'invoice_approved', 'awaiting_payment']);
+        query = query.in('status', ['draft', 'pending_customer_review', 'awaiting_payment']);
       } else if (filter === 'paid') {
         query = query.eq('status', 'paid');
+      } else {
+        // Default (all) — hide void invoices.
+        query = query.neq('status', 'void');
       }
 
       const { data, error: err } = await query;
@@ -260,7 +316,27 @@ export default function InvoicesList() {
       setLoading(false);
     }
     fetchInvoices();
-  }, [user.id, filter]);
+  }, [user.id, filter, reloadKey]);
+
+  async function handleApprove(bookingId) {
+    if (!bookingId) return;
+    await supabase
+      .from('bookings')
+      .update({ status: 'confirmed' })
+      .eq('id', bookingId);
+    await supabase
+      .from('invoices')
+      .update({ status: 'awaiting_payment', issued_at: new Date().toISOString() })
+      .eq('booking_id', bookingId);
+    reload();
+  }
+
+  async function handleDecline(bookingId) {
+    if (!bookingId) return;
+    await supabase.from('bookings').update({ status: 'declined' }).eq('id', bookingId);
+    await supabase.from('invoices').update({ status: 'void' }).eq('booking_id', bookingId);
+    reload();
+  }
 
   const filterOptions = [
     { key: 'all',     label: 'All' },
@@ -297,7 +373,9 @@ export default function InvoicesList() {
               key={inv.id}
               invoice={inv}
               userEmail={user?.email}
-              onPay={setPayTarget}
+              onApprove={handleApprove}
+              onDecline={handleDecline}
+              reload={reload}
             />
           ))}
         </div>
@@ -308,10 +386,6 @@ export default function InvoicesList() {
         <a href={'mailto:' + CONTACT.email} style={styles.link}>{CONTACT.email}</a>{' '}
         or {CONTACT.phone}.
       </p>
-
-      {payTarget && (
-        <PaymentModal invoice={payTarget} onClose={() => setPayTarget(null)} />
-      )}
     </div>
   );
 }
@@ -341,10 +415,6 @@ const styles = {
   invoiceNum: { fontFamily: FONTS.header, fontSize: '1rem', color: COLORS.blue, fontWeight: '600', marginRight: '0.75rem' },
   badge: { display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600', fontFamily: FONTS.body },
   cardActions: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
-  payBtn: {
-    padding: '0.4rem 1.1rem', background: '#28A745', color: '#fff', border: 'none',
-    borderRadius: '6px', fontFamily: FONTS.body, fontWeight: '700', fontSize: '0.88rem', cursor: 'pointer',
-  },
   pdfBtn: {
     padding: '0.35rem 0.9rem', background: 'none', border: '1px solid ' + COLORS.blue,
     borderRadius: '6px', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.82rem', cursor: 'pointer',
@@ -354,6 +424,53 @@ const styles = {
   detailLabel: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' },
   detailValue: { fontFamily: FONTS.body, fontSize: '0.9rem', color: COLORS.black },
 
+  // Itemized line items
+  lineSection: {
+    marginTop: '1rem', borderTop: '1px solid #eef1f5', paddingTop: '0.75rem',
+  },
+  lineSectionTitle: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem',
+  },
+  lineTable: { width: '100%', borderCollapse: 'collapse', fontFamily: FONTS.body, fontSize: '0.84rem' },
+  lineTh: {
+    fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em',
+    color: COLORS.lightBlue, borderBottom: '1px solid ' + COLORS.lightBlue,
+    paddingBottom: '5px', paddingTop: '2px', fontWeight: '600',
+  },
+  lineTd: {
+    padding: '5px 0', borderBottom: '1px solid #f0f2f5',
+    color: COLORS.black, fontFamily: FONTS.body, fontSize: '0.84rem',
+  },
+  lineTotals: { marginTop: '0.6rem', marginLeft: 'auto', width: '220px' },
+  lineTotalRow: {
+    display: 'flex', justifyContent: 'space-between',
+    fontFamily: FONTS.body, fontSize: '0.85rem', padding: '2px 0',
+  },
+  lineTotalLabel: { color: COLORS.lightBlue },
+  lineTotalGrand: {
+    fontWeight: '700', color: COLORS.blue,
+    borderTop: '1px solid ' + COLORS.lightBlue,
+    paddingTop: '5px', marginTop: '3px',
+  },
+
+  proposedBanner: {
+    marginTop: '0.75rem', padding: '0.65rem 0.9rem',
+    background: '#eef5ff', border: '1px solid #99c2ff', borderRadius: '8px',
+    fontFamily: FONTS.body, fontSize: '0.84rem', color: '#004085',
+    display: 'flex', flexDirection: 'column', gap: '0.6rem',
+  },
+  proposedBtns: { display: 'flex', gap: '0.6rem', flexWrap: 'wrap' },
+  approveBtn: {
+    padding: '0.4rem 1rem', background: '#28A745', color: '#fff', border: 'none',
+    borderRadius: '6px', fontFamily: FONTS.body, fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer',
+  },
+  declineBtn: {
+    padding: '0.4rem 1rem', background: '#fff', color: COLORS.red,
+    border: '1px solid ' + COLORS.red, borderRadius: '6px',
+    fontFamily: FONTS.body, fontSize: '0.85rem', cursor: 'pointer',
+  },
+
   approvedBanner: {
     marginTop: '0.75rem', padding: '0.65rem 0.9rem',
     background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px',
@@ -361,59 +478,8 @@ const styles = {
     display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
   },
   approvedIcon: { fontWeight: '700', flexShrink: 0 },
-  approvedPayLink: {
-    background: 'none', border: 'none', color: '#166534', fontFamily: FONTS.body,
-    fontSize: '0.84rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline', padding: 0,
-  },
   paidNote: { marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#155724', fontStyle: 'italic' },
   notes:    { marginTop: '0.6rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: '#555' },
   helpNote: { marginTop: '2rem', fontFamily: FONTS.body, fontSize: '0.82rem', color: COLORS.lightBlue, textAlign: 'center' },
   link: { color: COLORS.blue },
-
-  // PaymentModal
-  overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 1000, padding: '1rem',
-  },
-  modal: {
-    background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '520px',
-    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-  },
-  modalHeader: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '1.1rem 1.5rem', borderBottom: '1px solid ' + COLORS.lightBlue,
-  },
-  modalTitle: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1.15rem', margin: 0 },
-  closeBtn: {
-    background: 'none', border: 'none', fontSize: '1rem',
-    color: COLORS.lightBlue, cursor: 'pointer', padding: '0.2rem 0.5rem',
-  },
-  modalBody: { flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' },
-  modalFooter: {
-    display: 'flex', justifyContent: 'flex-end',
-    padding: '0.85rem 1.5rem', borderTop: '1px solid ' + COLORS.lightBlue,
-  },
-  cancelBtn: {
-    padding: '0.55rem 1.25rem', background: 'none', border: '1px solid ' + COLORS.lightBlue,
-    borderRadius: '8px', color: COLORS.lightBlue, fontFamily: FONTS.body, cursor: 'pointer',
-  },
-  amountBox: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px',
-    padding: '0.85rem 1.1rem', marginBottom: '1.1rem',
-  },
-  amountLabel: { fontFamily: FONTS.body, fontSize: '0.85rem', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em' },
-  amountValue: { fontFamily: FONTS.header, fontSize: '1.4rem', color: '#166534', fontWeight: '700' },
-  payIntro: { fontFamily: FONTS.body, fontSize: '0.875rem', color: '#555', marginBottom: '1rem', lineHeight: '1.55' },
-  methodList: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' },
-  method: {
-    display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
-    padding: '0.75rem', border: '1px solid #eef1f5', borderRadius: '8px', background: '#fafcff',
-  },
-  methodIcon: { fontSize: '1.4rem', flexShrink: 0, lineHeight: 1 },
-  methodName: { fontFamily: FONTS.body, fontWeight: '700', fontSize: '0.9rem', color: COLORS.black, margin: '0 0 2px' },
-  methodDesc: { fontFamily: FONTS.body, fontSize: '0.82rem', color: '#555', margin: 0, lineHeight: '1.45' },
-  payNote: { fontFamily: FONTS.body, fontSize: '0.82rem', color: COLORS.lightBlue, textAlign: 'center', marginTop: '0.5rem' },
 };
