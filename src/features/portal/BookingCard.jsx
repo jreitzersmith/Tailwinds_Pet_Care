@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
+import { useNavigate } from 'react-router-dom';
 import { COLORS, FONTS } from '../../constants.jsx';
 import { groupLineItems, summarizeVisits, fmtMoney } from '../booking/visitModel.js';
 
@@ -50,6 +51,8 @@ export default function BookingCard({
   const [showLateWarning, setShowLateWarning] = useState(false);
   // Upcoming bookings start collapsed; past bookings always expanded
   const [expanded, setExpanded] = useState(!canEdit);
+  const navigate = useNavigate();
+  const invoice = (booking.invoices || [])[0];
 
   const statusCfg   = STATUS_COLORS[booking.status] ?? { bg: '#eee', color: COLORS.black, label: booking.status };
   const endDate     = booking.booking_end_date && booking.booking_end_date !== booking.booking_date
@@ -205,6 +208,13 @@ export default function BookingCard({
             </div>
           </div>
 
+          {invoice && (
+            <button style={styles.invoiceLink}
+              onClick={() => navigate(`/portal?tab=invoices&focus=${invoice.id}`)}>
+              View invoice{invoice.invoice_number ? ` ${invoice.invoice_number}` : ''} →
+            </button>
+          )}
+
           {/* Special instructions */}
           {booking.special_instructions && (
             <p style={styles.notes}><em>Notes:</em> {booking.special_instructions}</p>
@@ -287,6 +297,7 @@ BookingCard.propTypes = {
 };
 
 const styles = {
+  invoiceLink: { display: 'block', alignSelf: 'flex-start', background: 'none', border: 'none', color: COLORS.blue, fontFamily: FONTS.body, fontSize: '0.85rem', textDecoration: 'underline', cursor: 'pointer', padding: '0.5rem 0 0' },
   card: {
     border: `1px solid ${COLORS.lightBlue}`, borderRadius: '10px',
     padding: '0.85rem 1.1rem', background: COLORS.white,
