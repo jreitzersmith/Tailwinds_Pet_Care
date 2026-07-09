@@ -28,6 +28,17 @@ const STATUS_STYLE = {
 function statusStyle(status) {
   return STATUS_STYLE[status] || { bg: '#eee', color: '#333', label: (status || '').replace(/_/g, ' ') };
 }
+
+const INVOICE_STATUS_STYLE = {
+  draft:                   { bg: '#FFF3CD', color: '#856404', label: 'Invoice: Draft' },
+  pending_customer_review: { bg: '#CCE5FF', color: '#004085', label: 'Invoice: Pending Customer' },
+  awaiting_payment:        { bg: '#FFE5B4', color: '#8a4e00', label: 'Invoice: Awaiting Payment' },
+  paid:                    { bg: '#D4EDDA', color: '#155724', label: 'Invoice: Paid' },
+  void:                    { bg: '#E2E3E5', color: '#383d41', label: 'Invoice: Void' },
+};
+function invoiceStatusStyle(status) {
+  return INVOICE_STATUS_STYLE[status] || null;
+}
 function statusLabel(status) {
   return statusStyle(status).label;
 }
@@ -325,6 +336,15 @@ function BookingRow({ booking, onStatusChange, onNotesChange, onApproved, servic
           <span style={{ ...styles.badge, background: ss.bg, color: ss.color }}>
             {ss.label}
           </span>
+          {(() => {
+            const inv = (booking.invoices || [])[0];
+            const is  = inv ? invoiceStatusStyle(inv.status) : null;
+            return is ? (
+              <span style={{ ...styles.badge, background: is.bg, color: is.color }} title={inv.invoice_number || ''}>
+                {is.label}
+              </span>
+            ) : null;
+          })()}
           <span style={styles.price}>${Number(booking.total_price || 0).toFixed(2)}</span>
           <span style={styles.expandCaret}>{expanded ? '▲' : '▼'}</span>
         </div>
@@ -528,7 +548,8 @@ export default function AdminBookingsPanel() {
         services  ( name ),
         pets      ( name, species ),
         booking_pets ( pet_name, pets ( name, species ) ),
-        booking_visits ( service_id, service_name, visit_date, shift_id, shift_label, shift_time, is_addon, unit_price, pet_count, is_quote, line_total )
+        booking_visits ( service_id, service_name, visit_date, shift_id, shift_label, shift_time, is_addon, unit_price, pet_count, is_quote, line_total ),
+        invoices ( status, invoice_number )
       `)
       .order('booking_date', { ascending: false });
 
