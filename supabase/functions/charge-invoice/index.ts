@@ -4,7 +4,8 @@
 // Required secrets (Supabase Dashboard → Edge Functions → Secrets):
 //   SQUARE_ACCESS_TOKEN — Square access token (sandbox or production)
 //   SQUARE_ENV          — 'sandbox' (default) or 'production'
-//   SQUARE_LOCATION_ID  — Square Location ID to attribute the payment to
+//   SQUARE_LOCATION_ID  — (optional) preferred Location ID; auto-derived from the
+//                         token if unset or not owned by the token's merchant.
 // (SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY are auto-injected.)
 
 import { serve }        from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -21,20 +22,25 @@ const SQUARE_BASE     = SQUARE_ENV === 'production'
   : 'https://connect.squareupsandbox.com'
 const SQUARE_TOKEN    = Deno.env.get('SQUARE_ACCESS_TOKEN') || ''
 const SQUARE_LOCATION = Deno.env.get('SQUARE_LOCATION_ID') || ''
+const SQ_VERSION      = '2024-07-17'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status, headers: { ...CORS, 'Content-Type': 'application/json' },
   })
 }
+const sqHeaders = {
+  'Square-Version': SQ_VERSION,
+  'Authorization': `Bearer ${SQUARE_TOKEN}`,
+  'Content-Type': 'application/json',
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   try {
-    const { invoiceId, sourceId } = await req.json()
+    const { invoiceId, sourceId, appId } = await req.json()
     if (!invoiceId || !sourceId) return json({ error: 'Missing invoiceId or sourceId.' }, 400)
-    if (!SQUARE_TOKEN)  return json({ error: 'Square is not configured (missing SQUARE_ACCESS_TOKEN).' }, 500)
-    if (!SQUARE_LOCATION) return json({ error: 'Square is not configured (missing SQUARE_LOCATION_ID).' }, 500)
+    if (!SQUARE_TOKEN) return json({ error: 'Square is not configured (missing SQUARE_ACCESS_TOKEN).' }, 500)
 
     const authHeader = req.headers.get('Authorization') || ''
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -59,21 +65,42 @@ serve(async (req) => {
     if (!(amount > 0)) return json({ error: 'Invoice has no payable amount.' }, 400)
     const amountCents = Math.round(amount * 100)
 
-    // Charge via Square (amount comes from the DB, never the client).
-    // Square caps idempotency_key at 45 chars; a UUID (36) is safely under.
-    const idempotencyKey = crypto.randomUUID()
+    // ── Verify the token's application matches the app that created the card token.
+    let tokenAppId: string | null = null
+    try {
+      const ts  = await fetch(`${SQUARE_BASE}/oauth2/token/status`, { method: 'POST', headers: sqHeaders, body: '{}' })
+      const tsd = await ts.json()
+      tokenAppId = tsd.client_id || null
+    } catch { /* non-fatal */ }
+    if (appId && tokenAppId && appId !== tokenAppId) {
+      return json({ error:
+        `Square configuration mismatch: the server's access token belongs to application "${tokenAppId}", ` +
+        `but the payment form uses application "${appId}". Set the SQUARE_ACCESS_TOKEN secret to an access ` +
+        `token from application "${appId}".` }, 400)
+    }
+
+    // ── Derive a valid location owned by the token's merchant (avoids
+    //    "Not authorized to take payments with location_id" mismatches).
+    let locationId = SQUARE_LOCATION
+    try {
+      const lr = await fetch(`${SQUARE_BASE}/v2/locations`, { headers: sqHeaders })
+      const ld = await lr.json()
+      const active = (ld.locations || []).filter((l: Record<string, unknown>) => l.status === 'ACTIVE')
+      if (active.length && !active.find((l: Record<string, unknown>) => l.id === locationId)) {
+        locationId = active[0].id as string
+      }
+    } catch { /* fall back to configured location */ }
+    if (!locationId) return json({ error: 'No Square location available for this access token.' }, 500)
+
+    // ── Charge via Square (amount comes from the DB, never the client).
     const sqRes = await fetch(`${SQUARE_BASE}/v2/payments`, {
       method: 'POST',
-      headers: {
-        'Square-Version': '2024-07-17',
-        'Authorization': `Bearer ${SQUARE_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
+      headers: sqHeaders,
       body: JSON.stringify({
         source_id: sourceId,
-        idempotency_key: idempotencyKey,
+        idempotency_key: crypto.randomUUID(),   // <= 45 chars
         amount_money: { amount: amountCents, currency: 'USD' },
-        location_id: SQUARE_LOCATION,
+        location_id: locationId,
         note: `Invoice ${invoice.invoice_number || invoice.id}`,
         reference_id: (invoice.invoice_number || invoice.id).toString().slice(0, 40),
       }),
