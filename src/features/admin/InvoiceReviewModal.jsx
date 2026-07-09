@@ -2,16 +2,30 @@ import { useState } from 'react';
 import PropTypes from 'prop-types';
 import supabase from '../../utils/supabase.js';
 import { COLORS, FONTS } from '../../constants.jsx';
+import { groupLineItems, fmtMoney } from '../booking/visitModel.js';
 
 function formatMoney(value) {
   if (value == null) return '---';
   return '$' + Number(value).toFixed(2);
 }
 
-function LineItemsTable({ invoice }) {
-  const items = invoice.line_items;
+// Resolve the items to display: prefer the invoice snapshot (line_items, already
+// a groupLineItems() output), else derive from the booking's booking_visits.
+function resolveItems(invoice) {
+  if (Array.isArray(invoice.line_items) && invoice.line_items.length > 0) {
+    return invoice.line_items;
+  }
+  const visits = invoice.bookings?.booking_visits;
+  if (Array.isArray(visits) && visits.length > 0) {
+    return groupLineItems(visits);
+  }
+  return [];
+}
 
-  if (items && items.length > 0) {
+function LineItemsTable({ invoice }) {
+  const items = resolveItems(invoice);
+
+  if (items.length > 0) {
     return (
       <table style={styles.lineTable}>
         <thead>
@@ -25,10 +39,15 @@ function LineItemsTable({ invoice }) {
         <tbody>
           {items.map((li, idx) => (
             <tr key={idx}>
-              <td style={styles.lineTd}>{li.description || '---'}</td>
+              <td style={styles.lineTd}>
+                {li.is_addon ? <span style={{ color: COLORS.lightBlue }}>+ </span> : null}
+                {li.description || li.service_name || '---'}
+              </td>
               <td style={{ ...styles.lineTd, textAlign: 'center' }}>{li.qty ?? 1}</td>
-              <td style={{ ...styles.lineTd, textAlign: 'right' }}>{formatMoney(li.unit_price)}</td>
-              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>{formatMoney(li.total)}</td>
+              <td style={{ ...styles.lineTd, textAlign: 'right' }}>{fmtMoney(li.unit_price)}</td>
+              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>
+                {li.is_quote ? 'Quote' : fmtMoney(li.total)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -36,6 +55,7 @@ function LineItemsTable({ invoice }) {
     );
   }
 
+  // Fallback when no itemization is available at all.
   return (
     <table style={styles.lineTable}>
       <thead>
@@ -80,12 +100,40 @@ export default function InvoiceReviewModal({ invoice, onSent, onClose }) {
     ? `${invoice.booking_date} - ${invoice.booking_end_date}`
     : (invoice.booking_date || '---');
 
+  // Issue the invoice: mark awaiting_payment + issued_at, confirm the booking,
+  // then email the customer (best-effort).
   async function handleApprove() {
     setSending(true);
     setSendError(null);
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const nowIso = new Date().toISOString();
 
+    // 1) Invoice -> awaiting_payment, issued_at = now()
+    const { data: updatedInvoice, error: invErr } = await supabase
+      .from('invoices')
+      .update({ status: 'awaiting_payment', issued_at: nowIso, updated_at: nowIso })
+      .eq('id', invoice.id)
+      .select('*, customers(email, full_name)')
+      .single();
+
+    if (invErr) {
+      setSending(false);
+      setSendError(invErr.message);
+      return;
+    }
+
+    // 2) Linked booking -> confirmed
+    const bookingId = invoice.booking_id || invoice.bookings?.id || null;
+    if (bookingId) {
+      const { error: bErr } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed', updated_at: nowIso })
+        .eq('id', bookingId);
+      if (bErr) console.warn('Booking confirm failed:', bErr.message);
+    }
+
+    // 3) Email the itemized invoice (best-effort).
+    const { data: { session } } = await supabase.auth.getSession();
     const { data, error } = await supabase.functions.invoke('send-invoice-email', {
       body:    { invoiceId: invoice.id },
       headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -94,12 +142,17 @@ export default function InvoiceReviewModal({ invoice, onSent, onClose }) {
     setSending(false);
 
     if (error || data?.error) {
-      setSendError(error?.message || data?.error || 'Failed to send approval. Please try again.');
+      // Invoice was already issued; surface the email failure but keep the state.
+      setSendError(
+        (error?.message || data?.error || 'Failed to send invoice email.') +
+        ' The invoice was issued — you can resend the email later.'
+      );
+      onSent({ ...invoice, ...(updatedInvoice || {}), status: 'awaiting_payment', issued_at: nowIso });
       return;
     }
 
     setSent(true);
-    onSent({ ...invoice, status: 'invoice_approved' });
+    onSent({ ...invoice, ...(updatedInvoice || {}), status: 'awaiting_payment', issued_at: nowIso });
   }
 
   return (
@@ -174,17 +227,17 @@ export default function InvoiceReviewModal({ invoice, onSent, onClose }) {
 
           <div style={styles.noticeBox}>
             <p style={styles.noticeText}>
-              Clicking <strong>Approve Invoice</strong> will:
+              Clicking <strong>Issue Invoice</strong> will:
             </p>
             <ul style={styles.noticeList}>
-              <li>Mark this invoice as <strong>Invoice Approved</strong></li>
-              <li>Email the itemized invoice to <strong>{customerEmail}</strong></li>
-              <li>Include a link for the customer to view and pay via their portal</li>
+              <li>Mark this invoice as <strong>Awaiting Payment</strong> and record the issue date</li>
+              <li>Set the linked booking to <strong>Confirmed</strong></li>
+              <li>Email the itemized invoice to <strong>{customerEmail}</strong> with a Pay Now link</li>
             </ul>
           </div>
 
           {sendError && <p style={styles.errorText}>{sendError}</p>}
-          {sent      && <p style={styles.successText}>Approval email sent to {customerEmail}</p>}
+          {sent      && <p style={styles.successText}>Invoice issued and emailed to {customerEmail}</p>}
         </div>
 
         <div style={styles.modalFooter}>
@@ -193,7 +246,7 @@ export default function InvoiceReviewModal({ invoice, onSent, onClose }) {
           </button>
           {!sent && (
             <button style={styles.approveBtn} onClick={handleApprove} disabled={sending}>
-              {sending ? 'Sending...' : 'Approve Invoice'}
+              {sending ? 'Issuing...' : 'Issue Invoice'}
             </button>
           )}
         </div>
