@@ -80,7 +80,7 @@ export default function PayNowButton({ invoice, onPaid }) {
         throw new Error(result.errors?.[0]?.message || 'Card could not be verified.');
       }
       const { data, error: fnErr } = await supabase.functions.invoke('charge-invoice', {
-        body: { invoiceId: invoice.id, sourceId: result.token },
+        body: { invoiceId: invoice.id, sourceId: result.token, appId: APP_ID },
       });
       if (fnErr) {
         // Surface the real error the edge function returned (e.g. a Square message).
