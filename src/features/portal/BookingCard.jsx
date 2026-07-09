@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { COLORS, FONTS } from '../../constants.jsx';
-import { PRICING_ZONES } from '../serviceArea/serviceAreaData.js';
+import { groupLineItems, summarizeVisits, fmtMoney } from '../booking/visitModel.js';
 
 const STATUS_COLORS = {
-  pending:     COLORS.lightBlue,
-  confirmed:   '#22a722',
-  in_progress: COLORS.blue,
-  completed:   '#888',
-  cancelled:   COLORS.red,
+  pending_company_review:   { bg: '#FFF3CD', color: '#856404', label: 'Pending Review' },
+  changes_pending_customer: { bg: '#FFE5B4', color: '#8a4e00', label: 'Changes Need Your Approval' },
+  confirmed:                { bg: '#D4EDDA', color: '#155724', label: 'Confirmed' },
+  in_progress:              { bg: '#CCE5FF', color: '#004085', label: 'In Progress' },
+  completed:                { bg: '#E2E3E5', color: '#383d41', label: 'Completed' },
+  cancelled:                { bg: '#F8D7DA', color: '#721c24', label: 'Cancelled' },
+  declined:                 { bg: '#F8D7DA', color: '#721c24', label: 'Declined' },
 };
 
 function formatDate(dateStr) {
@@ -37,56 +39,60 @@ function fmt12h(timeStr) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function fmtMoney(n) {
-  return '$' + Number(n).toFixed(2).replace(/\.00$/, '');
-}
-
-// Look up per-trip fee for a zone label (e.g. "Zone 5" → 15)
-function getZoneFee(zoneLabel) {
-  if (!zoneLabel) return null;
-  const z = PRICING_ZONES.find(p => p.label === zoneLabel);
-  return z && z.fee > 0 ? z.fee : null;
-}
-
-export default function BookingCard({ booking, canCancel, canEdit, canCopy, allServices, onCancel, onFullEdit, onCopy }) {
+export default function BookingCard({
+  booking, canCancel, canEdit, canCopy, allServices,
+  onCancel, onFullEdit, onCopy, onApproveChanges, onDeclineChanges,
+}) {
   const [confirming,      setConfirming]      = useState(false);
   const [cancelling,      setCancelling]      = useState(false);
+  const [approving,       setApproving]       = useState(false);
+  const [declining,       setDeclining]       = useState(false);
   const [showLateWarning, setShowLateWarning] = useState(false);
   // Upcoming bookings start collapsed; past bookings always expanded
   const [expanded, setExpanded] = useState(!canEdit);
 
-  const statusColor = STATUS_COLORS[booking.status] ?? COLORS.black;
+  const statusCfg   = STATUS_COLORS[booking.status] ?? { bg: '#eee', color: COLORS.black, label: booking.status };
   const endDate     = booking.booking_end_date && booking.booking_end_date !== booking.booking_date
     ? booking.booking_end_date : null;
   const within24h   = isWithin24h(booking.booking_date);
   const time12h     = fmt12h(booking.booking_time);
 
-  // ── Pricing calculations ───────────────────────────────────────────────
-  const primarySvc  = (allServices || []).find(s => s.id === booking.service_id);
-  const primaryUnit = primarySvc?.base_price != null ? Number(primarySvc.base_price) : null;
-  const primaryQty  = primaryUnit > 0
-    ? Math.round(Number(booking.base_price || 0) / primaryUnit)
-    : null;
+  const changesPending = booking.status === 'changes_pending_customer';
+  // Only allow customer edits while still awaiting (or being asked to re-approve) —
+  // never after confirmed/paid.
+  const editAllowed = canEdit &&
+    (booking.status === 'pending_company_review' || booking.status === 'changes_pending_customer');
 
-  const addonLines = (booking.addon_service_ids || []).map(id => {
-    const svc  = (allServices || []).find(s => s.id === id);
-    const unit = svc?.base_price != null ? Number(svc.base_price) : null;
-    // Addon qty mirrors primary qty (same slot grid assumption)
-    const qty  = unit != null && primaryQty != null ? primaryQty : null;
-    const total = unit != null && qty != null ? unit * qty : null;
-    return { name: svc?.name ?? '(add-on)', unit, qty, total };
-  });
-
+  // ── Pricing / line items (derived from booking_visits) ────────────────────
+  const visits    = booking.booking_visits || [];
+  const lineItems = groupLineItems(visits);
+  const summary   = summarizeVisits(visits, 0);
   const travelTotal = Number(booking.travel_fee || 0);
-  const zoneFee     = getZoneFee(booking.zone);
-  const numTrips    = zoneFee && travelTotal > 0 ? Math.round(travelTotal / zoneFee) : null;
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  // ── Pets ──────────────────────────────────────────────────────────────────
+  const petNames = (booking.booking_pets || [])
+    .map(bp => bp.pet_name || bp.pets?.name)
+    .filter(Boolean);
+  const petLabel = petNames.length === 1 ? 'Pet' : 'Pets';
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
   async function confirmCancel() {
     setCancelling(true);
     await onCancel(booking.id);
     setCancelling(false);
     setConfirming(false);
+  }
+
+  async function approveChanges() {
+    setApproving(true);
+    await onApproveChanges(booking.id);
+    setApproving(false);
+  }
+
+  async function declineChanges() {
+    setDeclining(true);
+    await onDeclineChanges(booking.id);
+    setDeclining(false);
   }
 
   function handleEditClick() {
@@ -107,13 +113,13 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
       <div style={styles.header} onClick={() => canEdit && setExpanded(v => !v)}>
         <div style={styles.headerLeft}>
           <span style={styles.serviceName}>{booking.services?.name ?? '—'}</span>
-          {booking.pets?.name && (
-            <span style={styles.petChip}>{booking.pets.name}</span>
+          {petNames.length > 0 && (
+            <span style={styles.petChip}>{petNames.join(', ')}</span>
           )}
         </div>
         <div style={styles.headerRight}>
-          <span style={{ ...styles.status, color: statusColor }}>
-            {booking.status.replace(/_/g, ' ')}
+          <span style={{ ...styles.status, background: statusCfg.bg, color: statusCfg.color }}>
+            {statusCfg.label}
           </span>
           <span style={styles.headerTotal}>${Number(booking.total_price).toFixed(2)}</span>
           {canEdit && (
@@ -128,35 +134,48 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
         {time12h && <span style={styles.timeText}> · {time12h}</span>}
       </div>
 
+      {/* ── Changes-proposed banner ── */}
+      {changesPending && (
+        <div style={styles.changesBanner}>
+          <p style={styles.changesTitle}>Tailwinds proposed changes to your booking</p>
+          {booking.change_note && (
+            <p style={styles.changesNote}>{booking.change_note}</p>
+          )}
+          <div style={styles.changesBtns}>
+            <button style={styles.approveBtn} onClick={approveChanges} disabled={approving || declining}>
+              {approving ? 'Approving…' : 'Approve Changes'}
+            </button>
+            <button style={styles.declineBtn} onClick={declineChanges} disabled={approving || declining}>
+              {declining ? 'Declining…' : 'Decline'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Expanded detail section ── */}
       {expanded && (
         <div style={styles.expandedBody}>
           <div style={styles.divider} />
 
+          {/* Pets */}
+          {petNames.length > 0 && (
+            <div style={styles.petsRow}>
+              <span style={styles.petsLabel}>{petLabel}:</span>
+              <span style={styles.petsValue}>{petNames.join(', ')}</span>
+            </div>
+          )}
+
           {/* Itemized breakdown */}
           <div style={styles.itemList}>
-            {/* Primary service */}
-            <div style={styles.itemRow}>
-              <span style={styles.itemName}>{booking.services?.name ?? '—'}</span>
-              <span style={styles.itemPrice}>
-                {primaryQty != null && primaryUnit != null
-                  ? `${primaryQty}× ${fmtMoney(primaryUnit)} = ${fmtMoney(primaryQty * primaryUnit)}`
-                  : fmtMoney(booking.base_price ?? 0)
-                }
-              </span>
-            </div>
-
-            {/* Add-ons */}
-            {addonLines.map((a, i) => (
+            {lineItems.map((li, i) => (
               <div key={i} style={styles.itemRow}>
-                <span style={styles.addonName}>+ {a.name}</span>
+                <span style={li.is_addon ? styles.addonName : styles.itemName}>
+                  {li.is_addon ? '+ ' : ''}{li.description}
+                </span>
                 <span style={styles.itemPrice}>
-                  {a.qty != null && a.unit != null
-                    ? `${a.qty}× ${fmtMoney(a.unit)} = ${fmtMoney(a.total)}`
-                    : a.unit != null
-                      ? `${fmtMoney(a.unit)}/visit`
-                      : 'included'
-                  }
+                  {li.is_quote
+                    ? 'Quote'
+                    : `${li.qty}× ${fmtMoney(li.unit_price)} = ${fmtMoney(li.total)}`}
                 </span>
               </div>
             ))}
@@ -167,16 +186,18 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
                 <span style={styles.addonName}>
                   Travel Surcharge{booking.zone ? ` (${booking.zone})` : ''}
                 </span>
-                <span style={styles.itemPrice}>
-                  {numTrips != null && zoneFee != null
-                    ? `${numTrips}× ${fmtMoney(zoneFee)}/trip = ${fmtMoney(travelTotal)}`
-                    : `+${fmtMoney(travelTotal)}`
-                  }
-                </span>
+                <span style={styles.itemPrice}>+{fmtMoney(travelTotal)}</span>
               </div>
             )}
 
             <div style={styles.totalDivider} />
+
+            {(travelTotal > 0 || summary.hasQuote) && (
+              <div style={styles.itemRow}>
+                <span style={styles.addonName}>Subtotal</span>
+                <span style={styles.itemPrice}>{fmtMoney(summary.subtotal)}</span>
+              </div>
+            )}
 
             <div style={styles.totalRow}>
               <span style={styles.totalLabel}>Total</span>
@@ -210,7 +231,7 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
           {/* Action buttons */}
           {!confirming && !showLateWarning && (
             <div style={styles.actionRow}>
-              {canEdit && (
+              {editAllowed && (
                 <button style={styles.editBtn} onClick={handleEditClick}>Edit</button>
               )}
               {canCancel && (
@@ -253,14 +274,16 @@ export default function BookingCard({ booking, canCancel, canEdit, canCopy, allS
 }
 
 BookingCard.propTypes = {
-  booking:      PropTypes.object.isRequired,
-  canCancel:    PropTypes.bool,
-  canEdit:      PropTypes.bool,
-  canCopy:      PropTypes.bool,
-  allServices:  PropTypes.array,
-  onCancel:     PropTypes.func.isRequired,
-  onFullEdit:   PropTypes.func.isRequired,
-  onCopy:       PropTypes.func.isRequired,
+  booking:          PropTypes.object.isRequired,
+  canCancel:        PropTypes.bool,
+  canEdit:          PropTypes.bool,
+  canCopy:          PropTypes.bool,
+  allServices:      PropTypes.array,
+  onCancel:         PropTypes.func.isRequired,
+  onFullEdit:       PropTypes.func.isRequired,
+  onCopy:           PropTypes.func.isRequired,
+  onApproveChanges: PropTypes.func,
+  onDeclineChanges: PropTypes.func,
 };
 
 const styles = {
@@ -286,8 +309,8 @@ const styles = {
     background: '#eef4fb', borderRadius: '999px', padding: '0.1rem 0.55rem',
   },
   status: {
-    fontFamily: FONTS.body, fontSize: '0.75rem', fontWeight: '600',
-    textTransform: 'capitalize', whiteSpace: 'nowrap',
+    fontFamily: FONTS.body, fontSize: '0.72rem', fontWeight: '600',
+    whiteSpace: 'nowrap', borderRadius: '999px', padding: '0.15rem 0.6rem',
   },
   headerTotal: {
     fontFamily: FONTS.body, fontSize: '0.9rem', fontWeight: '700', color: COLORS.blue,
@@ -304,11 +327,42 @@ const styles = {
   timeText: {
     fontFamily: FONTS.body, fontSize: '0.83rem', color: '#888',
   },
+  changesBanner: {
+    marginTop: '0.65rem', background: '#FFF4E5', border: '1px solid #FFB871',
+    borderRadius: '8px', padding: '0.75rem 0.9rem',
+  },
+  changesTitle: {
+    fontFamily: FONTS.header, fontSize: '0.9rem', fontWeight: '700', color: '#8a4e00',
+    margin: '0 0 0.35rem',
+  },
+  changesNote: {
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: '#6b4200', margin: '0 0 0.6rem',
+    lineHeight: 1.5,
+  },
+  changesBtns: { display: 'flex', gap: '0.6rem', flexWrap: 'wrap' },
+  approveBtn: {
+    padding: '0.4rem 1rem', background: '#28A745', color: COLORS.white, border: 'none',
+    borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem', fontWeight: '600',
+  },
+  declineBtn: {
+    padding: '0.4rem 1rem', background: COLORS.white, color: COLORS.red,
+    border: `1px solid ${COLORS.red}`, borderRadius: '6px', cursor: 'pointer',
+    fontFamily: FONTS.body, fontSize: '0.85rem',
+  },
   expandedBody: {
     marginTop: '0.5rem',
   },
   divider: {
     borderTop: `1px solid ${COLORS.lightBlue}`, margin: '0.6rem 0',
+  },
+  petsRow: {
+    display: 'flex', gap: '0.4rem', marginBottom: '0.55rem', alignItems: 'baseline',
+  },
+  petsLabel: {
+    fontFamily: FONTS.body, fontSize: '0.83rem', color: COLORS.lightBlue, fontWeight: '600',
+  },
+  petsValue: {
+    fontFamily: FONTS.body, fontSize: '0.85rem', color: COLORS.black,
   },
   itemList: {
     display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem',
