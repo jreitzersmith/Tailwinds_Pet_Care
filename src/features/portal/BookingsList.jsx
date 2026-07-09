@@ -26,9 +26,9 @@ export default function BookingsList({ filter }) {
       .then(({ data }) => { if (data) setCustomerPets(data); });
   }, [user.id]);
 
+  // Light services fetch retained only for category lookups the card may need.
   useEffect(() => {
     supabase.from('services').select('id, name, base_price, category')
-      .eq('is_active', true)
       .then(({ data }) => { if (data) setAllServices(data); });
   }, []);
 
@@ -43,16 +43,23 @@ export default function BookingsList({ filter }) {
         id, booking_date, booking_end_date, booking_time, status,
         service_id, pet_id, addon_service_ids,
         base_price, travel_fee, total_price, zone, special_instructions, created_at,
-        services ( name, category ),
-        pets     ( name, species )
+        admin_modified, change_note,
+        services ( name, category, base_price ),
+        pets     ( name, species ),
+        booking_pets ( pet_name, pets ( name, species ) ),
+        booking_visits ( service_id, service_name, visit_date, shift_id, shift_label, shift_time, is_addon, unit_price, pet_count, is_quote, line_total )
       `)
       .eq('customer_id', user.id)
       .order('booking_date', { ascending: filter === 'upcoming' });
 
     if (filter === 'upcoming') {
-      query = query.gte('booking_date', today).not('status', 'eq', 'cancelled');
+      query = query
+        .gte('booking_end_date', today)
+        .not('status', 'in', '("cancelled","declined")');
     } else {
-      query = query.or(`booking_date.lt.${today},status.eq.cancelled`);
+      query = query.or(
+        `booking_end_date.lt.${today},status.eq.cancelled,status.eq.declined,status.eq.completed`
+      );
     }
 
     const { data, error: err } = await query;
@@ -66,16 +73,32 @@ export default function BookingsList({ filter }) {
       .update({ status: 'cancelled' })
       .eq('id', bookingId);
     if (err) { alert(`Could not cancel: ${err.message}`); return; }
+    // Void the linked invoice as well.
+    await supabase.from('invoices').update({ status: 'void' }).eq('booking_id', bookingId);
     setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b));
   }
 
-  async function handleEdit(bookingId, updates) {
-    const { error: err } = await supabase
+  async function handleApproveChanges(bookingId) {
+    const { error: bErr } = await supabase
       .from('bookings')
-      .update(updates)
+      .update({ status: 'confirmed' })
       .eq('id', bookingId);
-    if (err) { alert(`Could not update booking: ${err.message}`); return; }
-    setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, ...updates } : b));
+    if (bErr) { alert(`Could not approve changes: ${bErr.message}`); return; }
+    await supabase
+      .from('invoices')
+      .update({ status: 'awaiting_payment', issued_at: new Date().toISOString() })
+      .eq('booking_id', bookingId);
+    await fetchBookings();
+  }
+
+  async function handleDeclineChanges(bookingId) {
+    const { error: bErr } = await supabase
+      .from('bookings')
+      .update({ status: 'declined' })
+      .eq('id', bookingId);
+    if (bErr) { alert(`Could not decline changes: ${bErr.message}`); return; }
+    await supabase.from('invoices').update({ status: 'void' }).eq('booking_id', bookingId);
+    await fetchBookings();
   }
 
   function handleCopy(booking) {
@@ -85,6 +108,8 @@ export default function BookingsList({ filter }) {
           service_id:           booking.service_id,
           serviceName:          booking.services?.name || '',
           pet_id:               booking.pet_id,
+          petIds:               (booking.booking_pets || []).map(bp => bp.pet_id).filter(Boolean),
+          petNames:             (booking.booking_pets || []).map(bp => bp.pet_name || bp.pets?.name || '').filter(Boolean),
           addon_service_ids:    booking.addon_service_ids || [],
           addonNames:           (booking.addon_service_ids || []).map(id => allServices.find(s => s.id === id)?.name || ''),
           base_price:           booking.base_price,
@@ -108,6 +133,9 @@ export default function BookingsList({ filter }) {
           addonNames:           (booking.addon_service_ids || []).map(id => allServices.find(s => s.id === id)?.name || ''),
           petId:                booking.pet_id       || null,
           petName:              booking.pets?.name   || '',
+          petIds:               (booking.booking_pets || []).map(bp => bp.pet_id).filter(Boolean),
+          petNames:             (booking.booking_pets || []).map(bp => bp.pet_name || bp.pets?.name || '').filter(Boolean),
+          visits:               booking.booking_visits || [],
           bookingDate:          booking.booking_date || '',
           bookingEndDate:       booking.booking_end_date || booking.booking_date || '',
           zone:                 booking.zone         || null,
@@ -139,6 +167,8 @@ export default function BookingsList({ filter }) {
           onCancel={handleCancel}
           onFullEdit={handleFullEdit}
           onCopy={handleCopy}
+          onApproveChanges={handleApproveChanges}
+          onDeclineChanges={handleDeclineChanges}
         />
       ))}
     </div>
