@@ -173,7 +173,7 @@ function LineItemsTable({ invoice, heading }) {
 }
 
 // ── Invoice card ──────────────────────────────────────────────────────────────
-function InvoiceCard({ invoice, userEmail, onApprove, onDecline, reload }) {
+function InvoiceCard({ invoice, userEmail, onApprove, onDecline, reload, highlight }) {
   const cfg = statusBadge(invoice.status);
   const dateRange = invoice.booking_end_date && invoice.booking_end_date !== invoice.booking_date
     ? invoice.booking_date + ' - ' + invoice.booking_end_date
@@ -199,7 +199,7 @@ function InvoiceCard({ invoice, userEmail, onApprove, onDecline, reload }) {
   }
 
   return (
-    <div style={{ ...styles.card, ...(isAwaiting ? styles.cardApproved : {}) }}>
+    <div id={'invoice-' + invoice.id} style={{ ...styles.card, ...(isAwaiting ? styles.cardApproved : {}), ...(highlight ? styles.cardFocused : {}) }}>
       <div style={styles.cardTop}>
         <div>
           <span style={styles.invoiceNum}>{invoice.invoice_number}</span>
@@ -281,7 +281,7 @@ function InvoiceCard({ invoice, userEmail, onApprove, onDecline, reload }) {
 }
 
 // ── Main list ─────────────────────────────────────────────────────────────────
-export default function InvoicesList() {
+export default function InvoicesList({ focusInvoiceId = null }) {
   const { user } = useAuth();
   const [invoices,     setInvoices]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -290,6 +290,13 @@ export default function InvoicesList() {
   const [reloadKey,    setReloadKey]    = useState(0);
 
   function reload() { setReloadKey(k => k + 1); }
+
+  // Scroll to and highlight an invoice when deep-linked from a booking.
+  useEffect(() => {
+    if (!focusInvoiceId || loading) return;
+    const el = document.getElementById('invoice-' + focusInvoiceId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusInvoiceId, loading, invoices]);
 
   useEffect(() => {
     async function fetchInvoices() {
@@ -376,6 +383,7 @@ export default function InvoicesList() {
               onApprove={handleApprove}
               onDecline={handleDecline}
               reload={reload}
+              highlight={inv.id === focusInvoiceId}
             />
           ))}
         </div>
@@ -392,6 +400,7 @@ export default function InvoicesList() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
+  cardFocused: { boxShadow: '0 0 0 3px ' + COLORS.blue, transition: 'box-shadow 0.3s' },
   filterRow: { display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' },
   filterBtn: {
     padding: '0.4rem 1rem', borderRadius: '20px', border: '1px solid ' + COLORS.lightBlue,
