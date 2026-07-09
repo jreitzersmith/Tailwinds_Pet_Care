@@ -31,6 +31,7 @@ function applyVars(text, vars) {
 // ── Settings categories (left sidebar) ───────────────────────────────────────
 const CATEGORIES = [
   { key: 'email_templates', label: 'Email Templates', icon: '✉' },
+  { key: 'service_pricing', label: 'Service Pricing', icon: '$' },
   // Future categories: { key: 'notifications', label: 'Notifications', icon: '🔔' },
   //                    { key: 'general',       label: 'General',       icon: '⚙' },
 ];
@@ -253,6 +254,106 @@ function EmailTemplatesEditor() {
   );
 }
 
+// ── Service Pricing editor ────────────────────────────────────────────────────
+// Lets the admin control which services bill per-pet (services.price_per_pet).
+function PricingEditor() {
+  const [services, setServices] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(null);
+  const [savingId, setSavingId] = useState(null);
+
+  useEffect(() => {
+    supabase
+      .from('services')
+      .select('id, name, category, base_price, price_per_pet')
+      .order('category')
+      .order('name')
+      .then(({ data, error: err }) => {
+        if (err) setError(err.message);
+        else     setServices(data || []);
+        setLoading(false);
+      });
+  }, []);
+
+  async function togglePerPet(svc) {
+    const next = !svc.price_per_pet;
+    setSavingId(svc.id);
+    // Optimistic update
+    setServices(prev => prev.map(s => s.id === svc.id ? { ...s, price_per_pet: next } : s));
+    const { error: err } = await supabase
+      .from('services')
+      .update({ price_per_pet: next })
+      .eq('id', svc.id);
+    setSavingId(null);
+    if (err) {
+      // Revert on failure
+      setServices(prev => prev.map(s => s.id === svc.id ? { ...s, price_per_pet: !next } : s));
+      alert(`Update failed: ${err.message}`);
+    }
+  }
+
+  if (loading) return <p style={ts.msg}>Loading services…</p>;
+  if (error)   return <p style={{ ...ts.msg, color: COLORS.red }}>{error}</p>;
+
+  // Group services by category for a tidy list
+  const byCategory = {};
+  services.forEach(s => {
+    const cat = s.category || 'Uncategorized';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(s);
+  });
+
+  return (
+    <div style={pe.wrap}>
+      <div style={pe.intro}>
+        <h3 style={pe.introTitle}>Service Pricing</h3>
+        <p style={pe.introDesc}>
+          Toggle <strong>Bill Per Pet</strong> to charge a service&apos;s base price for
+          every pet on a visit. When off, the service is charged once per visit
+          regardless of pet count.
+        </p>
+      </div>
+
+      {Object.entries(byCategory).map(([cat, list]) => (
+        <div key={cat} style={pe.catBlock}>
+          <p style={pe.catHeading}>{cat}</p>
+          <table style={pe.table}>
+            <thead>
+              <tr>
+                <th style={{ ...pe.th, textAlign: 'left' }}>Service</th>
+                <th style={{ ...pe.th, textAlign: 'right' }}>Base Price</th>
+                <th style={{ ...pe.th, textAlign: 'center' }}>Bill Per Pet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(svc => (
+                <tr key={svc.id}>
+                  <td style={pe.td}>{svc.name}</td>
+                  <td style={{ ...pe.td, textAlign: 'right' }}>
+                    {svc.base_price == null ? 'Quote' : '$' + Number(svc.base_price).toFixed(2)}
+                  </td>
+                  <td style={{ ...pe.td, textAlign: 'center' }}>
+                    <label style={pe.toggleLabel}>
+                      <input
+                        type='checkbox'
+                        checked={!!svc.price_per_pet}
+                        disabled={savingId === svc.id}
+                        onChange={() => togglePerPet(svc)}
+                        style={pe.checkbox}
+                      />
+                      {savingId === svc.id && <span style={pe.savingNote}>saving…</span>}
+                    </label>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Settings Panel ───────────────────────────────────────────────────────
 export default function AdminSettingsPanel() {
   const [category, setCategory] = useState('email_templates');
@@ -277,6 +378,7 @@ export default function AdminSettingsPanel() {
       {/* Settings content */}
       <div style={ps.content}>
         {category === 'email_templates' && <EmailTemplatesEditor />}
+        {category === 'service_pricing' && <PricingEditor />}
       </div>
     </div>
   );
@@ -380,4 +482,32 @@ const ts = {
   },
 
   msg: { fontFamily: FONTS.body, color: COLORS.lightBlue, padding: '2rem', textAlign: 'center' },
+};
+
+// ── Pricing editor styles ─────────────────────────────────────────────────────
+const pe = {
+  wrap:   { display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '640px' },
+  intro:  {},
+  introTitle: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', margin: '0 0 0.35rem' },
+  introDesc:  { fontFamily: FONTS.body, fontSize: '0.85rem', color: '#666', margin: 0, lineHeight: 1.5 },
+
+  catBlock:   {},
+  catHeading: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '600',
+    margin: '0 0 0.35rem',
+  },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: {
+    fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    borderBottom: `2px solid ${COLORS.lightBlue}`, padding: '0 8px 5px 0',
+  },
+  td: {
+    fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black,
+    padding: '7px 8px 7px 0', borderBottom: '1px solid #eef1f5',
+  },
+  toggleLabel: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' },
+  checkbox:    { width: '16px', height: '16px', cursor: 'pointer', accentColor: COLORS.blue },
+  savingNote:  { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, fontStyle: 'italic' },
 };
