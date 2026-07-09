@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 import supabase from '../../utils/supabase.js';
 import { COLORS, FONTS } from '../../constants.jsx';
 
+// Invoice statuses the admin can set from this editor (per contract).
 const INVOICE_STATUSES = [
-  { value: 'pending_company_review',  label: 'Pending Tailwinds Review' },
-  { value: 'pending_customer_review', label: 'Pending Customer Review' },
-  { value: 'invoice_approved',        label: 'Invoice Approved' },
-  { value: 'awaiting_payment',        label: 'Awaiting Payment' },
+  { value: 'draft',                   label: 'Draft (Pending Tailwinds Review)' },
+  { value: 'pending_customer_review', label: 'Pending Customer Review (Propose Changes)' },
+  { value: 'awaiting_payment',        label: 'Awaiting Payment (Issue Invoice)' },
   { value: 'paid',                    label: 'Paid' },
+  { value: 'void',                    label: 'Void' },
 ];
 
 function emptyLineItem() {
@@ -42,11 +43,14 @@ export default function AdminInvoiceEditor({ invoice, customers, onSave, onClose
   );
   const [travelFee,  setTravelFee]  = useState(invoice?.travel_fee ?? '');
   const [notes,      setNotes]      = useState(invoice?.notes      || '');
-  const [status,     setStatus]     = useState(invoice?.status     || 'pending_company_review');
+  const [changeNote, setChangeNote] = useState(invoice?.bookings?.change_note || '');
+  const [status,     setStatus]     = useState(invoice?.status     || 'draft');
   const [saving,     setSaving]     = useState(false);
   const [formError,  setFormError]  = useState(null);
 
   const { subtotal, total } = computeTotals(lineItems, travelFee);
+
+  const bookingId = invoice?.booking_id || null;
 
   function updateLineItem(idx, field, value) {
     setLineItems(prev => {
@@ -65,11 +69,30 @@ export default function AdminInvoiceEditor({ invoice, customers, onSave, onClose
   async function handleSave() {
     if (!customerId)          { setFormError('Please select a customer.'); return; }
     if (lineItems.length === 0) { setFormError('Add at least one line item.'); return; }
+    if (status === 'pending_customer_review' && !changeNote.trim()) {
+      setFormError('Add a change note describing what you changed for the customer.');
+      return;
+    }
 
     setFormError(null);
     setSaving(true);
 
-    const validItems = lineItems.filter(li => li.description.trim());
+    const nowIso = new Date().toISOString();
+
+    // Persist line items in the SAME shape visitModel.groupLineItems produces
+    // (description, qty, unit_price, total + is_addon/is_quote), so downstream
+    // renderers can display invoice.line_items directly without re-grouping.
+    const validItems = lineItems
+      .filter(li => (li.description || '').trim())
+      .map(li => ({
+        ...li,
+        qty:        Number(li.qty)        || 0,
+        unit_price: Number(li.unit_price) || 0,
+        total:      Number(li.total)      || 0,
+        is_addon:   !!li.is_addon,
+        is_quote:   li.is_quote === true ? true : false,
+      }));
+
     const payload = {
       customer_id:      customerId,
       service_name:     serviceName    || null,
@@ -84,11 +107,15 @@ export default function AdminInvoiceEditor({ invoice, customers, onSave, onClose
       total_amount:     total          || null,
       notes:            notes          || null,
       status,
-      updated_at:       new Date().toISOString(),
+      updated_at:       nowIso,
     };
 
+    // Status-driven side effects on the invoice.
+    if (status === 'awaiting_payment' && invoice?.status !== 'awaiting_payment') {
+      payload.issued_at = nowIso;
+    }
     if (status === 'paid' && invoice?.status !== 'paid') {
-      payload.paid_at = new Date().toISOString();
+      payload.paid_at = nowIso;
     }
 
     let result;
@@ -98,8 +125,33 @@ export default function AdminInvoiceEditor({ invoice, customers, onSave, onClose
       result = await supabase.from('invoices').update(payload).eq('id', invoice.id).select().single();
     }
 
+    if (result.error) { setSaving(false); setFormError(result.error.message); return; }
+
+    // Keep the linked booking in sync with the invoice status change.
+    if (bookingId) {
+      let bookingUpdate = null;
+      if (status === 'pending_customer_review') {
+        // Admin proposing changes.
+        bookingUpdate = {
+          status:         'changes_pending_customer',
+          admin_modified: true,
+          change_note:    changeNote || null,
+          updated_at:     nowIso,
+        };
+      } else if (status === 'awaiting_payment') {
+        // Issuing the invoice: booking is now confirmed.
+        bookingUpdate = { status: 'confirmed', updated_at: nowIso };
+      }
+      if (bookingUpdate) {
+        const { error: bErr } = await supabase
+          .from('bookings')
+          .update(bookingUpdate)
+          .eq('id', bookingId);
+        if (bErr) console.warn('Booking sync failed:', bErr.message);
+      }
+    }
+
     setSaving(false);
-    if (result.error) { setFormError(result.error.message); return; }
     onSave(result.data, isNew);
   }
 
@@ -220,6 +272,22 @@ export default function AdminInvoiceEditor({ invoice, customers, onSave, onClose
             </div>
           </div>
 
+          {/* Change note — required when proposing changes to the customer */}
+          <div style={styles.field}>
+            <label style={styles.label}>
+              Change Note {status === 'pending_customer_review' ? '*' : '(shown when proposing changes)'}
+            </label>
+            <textarea
+              style={{ ...styles.input, ...styles.textarea }}
+              value={changeNote}
+              onChange={e => setChangeNote(e.target.value)}
+              placeholder='Explain what changed (price, schedule, add-ons) so the customer can approve or decline…'
+            />
+            {!bookingId && (
+              <p style={styles.hintNote}>No linked booking — change note is saved on the invoice only when a booking is attached.</p>
+            )}
+          </div>
+
           <div style={styles.field}>
             <label style={styles.label}>Notes (visible to customer)</label>
             <textarea style={{ ...styles.input, ...styles.textarea }} value={notes} onChange={e => setNotes(e.target.value)} placeholder='Optional notes or payment instructions...' />
@@ -280,6 +348,7 @@ const styles = {
     color: COLORS.black, boxSizing: 'border-box', outline: 'none',
   },
   textarea: { resize: 'vertical', minHeight: '72px' },
+  hintNote: { fontFamily: FONTS.body, fontSize: '0.75rem', color: COLORS.lightBlue, fontStyle: 'italic', margin: '4px 0 0' },
   grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1rem' },
 
   lineItemsHeader: {
