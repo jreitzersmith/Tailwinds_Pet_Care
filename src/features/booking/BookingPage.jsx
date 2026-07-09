@@ -13,8 +13,8 @@ const DEFAULT_SLOT_ROWS = [
   { id: 'evening', label: 'Evening' },
 ];
 
-// Pre-check morning + evening for every date in range so the slot grid
-// is pre-populated when editing. (Slot selections are not persisted to DB.)
+// Fallback: pre-check morning + evening for each date when no persisted
+// visit detail is available (legacy bookings).
 function buildDefaultSlots(startDate, endDate) {
   if (!startDate) return {};
   const slots = {};
@@ -28,27 +28,76 @@ function buildDefaultSlots(startDate, endDate) {
   return slots;
 }
 
+// Reconstruct the exact slot grids from persisted booking_visits so an
+// edit round-trips faithfully (custom shifts preserved).
+function reconstructFromVisits(visits) {
+  const out = {
+    serviceSlots: {}, serviceSlotRows: [],
+    addonIds: [], addonNames: [], addonSlots: {}, addonSlotRows: {},
+  };
+  const primaryRowMap = new Map();
+  const addonRowMap   = {};
+  (visits || []).forEach(v => {
+    if (!v.is_addon) {
+      out.serviceSlots[v.visit_date] = { ...(out.serviceSlots[v.visit_date] || {}), [v.shift_id]: true };
+      if (!primaryRowMap.has(v.shift_id)) primaryRowMap.set(v.shift_id, v.shift_label || v.shift_id);
+    } else {
+      if (!out.addonIds.includes(v.service_id)) {
+        out.addonIds.push(v.service_id);
+        out.addonNames.push(v.service_name);
+        out.addonSlots[v.service_id] = {};
+        addonRowMap[v.service_id] = new Map();
+      }
+      out.addonSlots[v.service_id][v.visit_date] = {
+        ...(out.addonSlots[v.service_id][v.visit_date] || {}), [v.shift_id]: true,
+      };
+      if (!addonRowMap[v.service_id].has(v.shift_id))
+        addonRowMap[v.service_id].set(v.shift_id, v.shift_label || v.shift_id);
+    }
+  });
+  out.serviceSlotRows = [...primaryRowMap.entries()].map(([id, label]) => ({ id, label }));
+  if (out.serviceSlotRows.length === 0) out.serviceSlotRows = [...DEFAULT_SLOT_ROWS];
+  Object.entries(addonRowMap).forEach(([id, m]) => {
+    out.addonSlotRows[id] = [...m.entries()].map(([sid, label]) => ({ id: sid, label }));
+  });
+  return out;
+}
+
 export default function BookingPage() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const [searchParams] = useSearchParams();
 
-  // "Copy to new dates" pre-populates service/pet but clears dates
-  const copyFrom = location.state?.copyFrom;
-  // "Edit booking" pre-populates everything including dates and booking ID
+  const copyFrom    = location.state?.copyFrom;
   const editBooking = location.state?.editBooking;
+
+  const editPetIds   = editBooking?.petIds   || (editBooking?.petId ? [editBooking.petId] : []);
+  const editPetNames = editBooking?.petNames || (editBooking?.petName ? [editBooking.petName] : []);
+  const editVisits   = editBooking?.visits || [];
+  const reconstructed = editVisits.length
+    ? reconstructFromVisits(editVisits)
+    : {
+        serviceSlots:    buildDefaultSlots(editBooking?.bookingDate, editBooking?.bookingEndDate),
+        serviceSlotRows: [...DEFAULT_SLOT_ROWS],
+        addonIds:        editBooking?.addonIds || [],
+        addonNames:      editBooking?.addonNames || [],
+        addonSlots:      Object.fromEntries(
+          (editBooking?.addonIds || []).map(id => [id, buildDefaultSlots(editBooking?.bookingDate, editBooking?.bookingEndDate)])),
+        addonSlotRows:   Object.fromEntries(
+          (editBooking?.addonIds || []).map(id => [id, [...DEFAULT_SLOT_ROWS]])),
+      };
 
   const initialOverride = editBooking ? {
     editBookingId:       editBooking.editBookingId,
     serviceId:           editBooking.serviceId      || null,
     serviceName:         editBooking.serviceName    || '',
     basePrice:           Number(editBooking.basePrice || 0),
-    baseUnitPrice:       0,   // resolved from live DB price in ServiceStep
+    baseUnitPrice:       0,
     isQuote:             false,
-    addonIds:            editBooking.addonIds       || [],
-    addonNames:          editBooking.addonNames      || [],
-    petId:               editBooking.petId          || null,
-    petName:             editBooking.petName        || '',
+    petIds:              editPetIds,
+    petNames:            editPetNames,
+    petId:               editPetIds[0]   || null,
+    petName:             editPetNames[0] || '',
     petIsNew:            false,
     bookingDate:         editBooking.bookingDate    || '',
     bookingEndDate:      editBooking.bookingEndDate || '',
@@ -56,18 +105,7 @@ export default function BookingPage() {
     travelFee:           Number(editBooking.travelFee || 0),
     totalPrice:          Number(editBooking.totalPrice || 0),
     specialInstructions: editBooking.specialInstructions || '',
-    // Reconstruct slot state from booking dates (actual selections not persisted to DB)
-    serviceSlots:    buildDefaultSlots(editBooking.bookingDate, editBooking.bookingEndDate),
-    serviceSlotRows: [...DEFAULT_SLOT_ROWS],
-    addonSlots:      Object.fromEntries(
-      (editBooking.addonIds || []).map(id => [
-        id,
-        buildDefaultSlots(editBooking.bookingDate, editBooking.bookingEndDate),
-      ])
-    ),
-    addonSlotRows:   Object.fromEntries(
-      (editBooking.addonIds || []).map(id => [id, [...DEFAULT_SLOT_ROWS]])
-    ),
+    ...reconstructed,
   } : copyFrom ? {
     serviceId:           copyFrom.service_id   || null,
     serviceName:         copyFrom.serviceName  || '',
@@ -75,7 +113,8 @@ export default function BookingPage() {
     isQuote:             false,
     addonIds:            copyFrom.addon_service_ids || [],
     addonNames:          copyFrom.addonNames        || [],
-    petId:               copyFrom.pet_id       || null,
+    petIds:              copyFrom.petIds || (copyFrom.pet_id ? [copyFrom.pet_id] : []),
+    petNames:            copyFrom.petNames || [],
     petIsNew:            false,
     zone:                copyFrom.zone         || null,
     travelFee:           Number(copyFrom.travel_fee || 0),
@@ -96,12 +135,12 @@ export default function BookingPage() {
       <div style={styles.page}>
         <div style={styles.card}>
           <h1 style={styles.heading}>
-            {isEditMode ? 'Booking Updated!' : 'Booking Confirmed!'}
+            {isEditMode ? 'Booking Updated!' : 'Booking Submitted!'}
           </h1>
           <p style={styles.body}>
             {isEditMode
-              ? 'Your booking has been updated. We will confirm any changes within 24 hours.'
-              : 'Thank you! We will reach out to confirm the details within 24 hours.'}
+              ? 'Your booking has been updated and sent to Tailwinds for review. We will confirm within 24 hours.'
+              : 'Thank you! Your booking has been sent to Tailwinds for review. We will confirm and send your invoice within 24 hours.'}
           </p>
           <div style={styles.btnRow}>
             <button style={styles.primaryBtn} onClick={() => navigate('/portal')}>
@@ -123,7 +162,6 @@ export default function BookingPage() {
       <div style={styles.card}>
         <h1 style={styles.heading}>{isEditMode ? 'Edit Booking' : 'Book a Service'}</h1>
 
-        {/* Progress indicator */}
         <div style={styles.progress}>
           {STEPS.map((label, i) => (
             <div key={label} style={styles.progressItem}>
