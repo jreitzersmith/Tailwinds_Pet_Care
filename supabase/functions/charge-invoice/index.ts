@@ -60,7 +60,8 @@ serve(async (req) => {
     const amountCents = Math.round(amount * 100)
 
     // Charge via Square (amount comes from the DB, never the client).
-    const idempotencyKey = `${invoice.id}-${Date.now()}`
+    // Square caps idempotency_key at 45 chars; a UUID (36) is safely under.
+    const idempotencyKey = crypto.randomUUID()
     const sqRes = await fetch(`${SQUARE_BASE}/v2/payments`, {
       method: 'POST',
       headers: {
