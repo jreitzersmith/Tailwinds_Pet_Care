@@ -47,7 +47,8 @@ export default function BookingsList({ filter }) {
         services ( name, category, base_price ),
         pets     ( name, species ),
         booking_pets ( pet_name, pets ( name, species ) ),
-        booking_visits ( service_id, service_name, visit_date, shift_id, shift_label, shift_time, is_addon, unit_price, pet_count, is_quote, line_total )
+        booking_visits ( service_id, service_name, visit_date, shift_id, shift_label, shift_time, is_addon, unit_price, pet_count, is_quote, line_total ),
+        invoices ( id, invoice_number, status )
       `)
       .eq('customer_id', user.id)
       .order('booking_date', { ascending: filter === 'upcoming' });
