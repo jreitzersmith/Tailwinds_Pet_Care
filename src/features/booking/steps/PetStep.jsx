@@ -103,52 +103,57 @@ export default function PetStep({ booking }) {
 
   useEffect(() => { fetchPets(); }, [user.id]);
 
-  function selectExisting(pet) {
-    update({ petId: pet.id, petName: pet.name, petIsNew: false, petSchedule: petToSchedule(pet) });
-    setAddingNew(false);
+  function toggleExisting(pet) {
+    const ids   = form.petIds   || [];
+    const names = form.petNames || [];
+    const sel   = ids.includes(pet.id);
+    const newIds   = sel ? ids.filter(id => id !== pet.id) : [...ids, pet.id];
+    const newNames = sel ? names.filter(n => n !== pet.name) : [...names, pet.name];
+    const firstPet = pets.find(p => p.id === newIds[0]);
+    update({ petIds: newIds, petNames: newNames, petSchedule: firstPet ? petToSchedule(firstPet) : null });
   }
 
   function handleNewPetField(field, value) {
-    update({ newPet: { ...form.newPet, [field]: value }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, [field]: value }, petIsNew: true });
   }
   function setNewDiet(i, field, v) {
     const d = [...(form.newPet.diet || [])];
     d[i] = { ...d[i], [field]: v };
-    update({ newPet: { ...form.newPet, diet: d }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, diet: d }, petIsNew: true });
   }
   function addNewDiet() {
-    update({ newPet: { ...form.newPet, diet: [...(form.newPet.diet || []), { ...BLANK_DIET }] }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, diet: [...(form.newPet.diet || []), { ...BLANK_DIET }] }, petIsNew: true });
   }
   function removeNewDiet(i) {
-    update({ newPet: { ...form.newPet, diet: (form.newPet.diet || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, diet: (form.newPet.diet || []).filter((_, x) => x !== i) }, petIsNew: true });
   }
   function setNewWalk(i, field, v) {
     const w = [...(form.newPet.walking_schedule || [])];
     w[i] = { ...w[i], [field]: v };
-    update({ newPet: { ...form.newPet, walking_schedule: w }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, walking_schedule: w }, petIsNew: true });
   }
   function addNewWalk() {
-    update({ newPet: { ...form.newPet, walking_schedule: [...(form.newPet.walking_schedule || []), { ...BLANK_WALK }] }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, walking_schedule: [...(form.newPet.walking_schedule || []), { ...BLANK_WALK }] }, petIsNew: true });
   }
   function removeNewWalk(i) {
-    update({ newPet: { ...form.newPet, walking_schedule: (form.newPet.walking_schedule || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, walking_schedule: (form.newPet.walking_schedule || []).filter((_, x) => x !== i) }, petIsNew: true });
   }
   function setNewMed(i, field, v) {
     const m = [...(form.newPet.medications || [])];
     m[i] = { ...m[i], [field]: v };
-    update({ newPet: { ...form.newPet, medications: m }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, medications: m }, petIsNew: true });
   }
   function addNewMed() {
-    update({ newPet: { ...form.newPet, medications: [...(form.newPet.medications || []), { ...BLANK_MED }] }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, medications: [...(form.newPet.medications || []), { ...BLANK_MED }] }, petIsNew: true });
   }
   function removeNewMed(i) {
-    update({ newPet: { ...form.newPet, medications: (form.newPet.medications || []).filter((_, x) => x !== i) }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, medications: (form.newPet.medications || []).filter((_, x) => x !== i) }, petIsNew: true });
   }
   function toggleNewWalkDay(i, day) {
     const w = [...(form.newPet.walking_schedule || [])];
     const days = w[i]?.days ?? [];
     w[i] = { ...w[i], days: days.includes(day) ? days.filter(d => d !== day) : [...days, day] };
-    update({ newPet: { ...form.newPet, walking_schedule: w }, petId: null, petIsNew: true });
+    update({ newPet: { ...form.newPet, walking_schedule: w }, petIsNew: true });
   }
 
   function openEdit(e, pet) {
@@ -201,18 +206,19 @@ export default function PetStep({ booking }) {
     const { error: err } = await supabase.from('pets').update(payload).eq('id', editingPet.id);
     if (err) { setEditError(err.message); setEditSaving(false); return; }
     await fetchPets();
-    if (form.petId === editingPet.id) {
+    if ((form.petIds || []).includes(editingPet.id)) {
       update({ petSchedule: petToSchedule({ ...editingPet, ...payload }) });
     }
     closeEdit();
     setEditSaving(false);
   }
 
-  const canProceed = form.petId || (form.petIsNew && form.newPet?.name?.trim());
+  const canProceed = (form.petIds || []).length > 0 || (form.petIsNew && form.newPet?.name?.trim());
 
   return (
     <div>
-      <h2 style={styles.sectionTitle}>Select a Pet</h2>
+      <h2 style={styles.sectionTitle}>Select Pet(s)</h2>
+      <p style={styles.helperText}>Choose one or more pets for this booking. Per-pet services (e.g. walking, medication) are billed for each pet included.</p>
 
       {loading && <p style={styles.msg}>Loading pets…</p>}
       {error   && <p style={styles.err}>{error}</p>}
@@ -223,12 +229,12 @@ export default function PetStep({ booking }) {
             const feedCount = toArr(pet.diet).length;
             const walkCount = toArr(pet.walking_schedule).length;
             const medCount  = toArr(pet.medications).length;
-            const selected  = form.petId === pet.id;
+            const selected  = (form.petIds || []).includes(pet.id);
             return (
               <div
                 key={pet.id}
                 style={{ ...styles.petCard, ...(selected ? styles.petCardSelected : {}) }}
-                onClick={() => selectExisting(pet)}
+                onClick={() => toggleExisting(pet)}
               >
                 <div style={styles.petCardTop}>
                   <div>
@@ -242,15 +248,14 @@ export default function PetStep({ booking }) {
                     <button style={styles.editPetBtn} onClick={e => openEdit(e, pet)}>Edit</button>
                   </div>
                 </div>
-                {selected && <span style={styles.selectedMark}>✓ Selected</span>}
+                {selected && <span style={styles.selectedMark}>✓ Included in booking</span>}
               </div>
             );
           })}
           <button style={styles.addNewBtn} onClick={() => {
-            const next = !addingNew;
-            setAddingNew(next);
-            if (!next) update({ petId: null, petIsNew: false });
-            else update({ petId: null, petIsNew: true });
+            const nextOpen = !addingNew;
+            setAddingNew(nextOpen);
+            update({ petIsNew: nextOpen });
           }}>
             {addingNew ? '− Cancel new pet' : '+ Add a new pet'}
           </button>
@@ -553,7 +558,8 @@ MedEntry.propTypes = {
 PetStep.propTypes = { booking: PropTypes.object.isRequired };
 
 const styles = {
-  sectionTitle: { fontFamily: FONTS.header, color: COLORS.blue, marginBottom: '1rem', fontSize: '1.1rem' },
+  sectionTitle: { fontFamily: FONTS.header, color: COLORS.blue, marginBottom: '0.4rem', fontSize: '1.1rem' },
+  helperText:   { fontFamily: FONTS.body, color: '#666', fontSize: '0.85rem', margin: '0 0 1rem' },
   subTitle:     { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', margin: '0 0 0.75rem' },
   msg:          { fontFamily: FONTS.body, color: COLORS.lightBlue },
   err:          { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.85rem' },
