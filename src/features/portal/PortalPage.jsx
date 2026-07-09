@@ -23,7 +23,14 @@ export default function PortalPage() {
   const { user, signOut } = useAuth();
   const [searchParams]    = useSearchParams();
   const [tab, setTab]     = useState(() => resolveInitialTab(searchParams));
+  const [focusInvoiceId, setFocusInvoiceId] = useState(searchParams.get('focus') || null);
   const [setupDone, setSetupDone] = useState(true); // optimistic: avoid flash
+
+  // React to deep links (e.g. "View invoice" from a booking, or the email link).
+  useEffect(() => {
+    setTab(resolveInitialTab(searchParams));
+    setFocusInvoiceId(searchParams.get('focus') || null);
+  }, [searchParams]);
 
   useEffect(() => {
     async function checkSetup() {
@@ -65,7 +72,7 @@ export default function PortalPage() {
         {tab === 0 && <BookingsList filter='upcoming' />}
         {tab === 1 && <BookingsList filter='past' />}
         {tab === 2 && <PetManager onSelectTab={setTab} />}
-        {tab === 3 && <InvoicesList />}
+        {tab === 3 && <InvoicesList focusInvoiceId={focusInvoiceId} />}
         {tab === 4 && <AccountSettings />}
       </div>
     </div>
