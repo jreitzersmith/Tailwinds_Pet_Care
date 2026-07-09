@@ -94,13 +94,16 @@ function VisitScheduleTable({ visits }) {
   const MAX_COLS     = 10;
   const displayDates = dates.slice(0, MAX_COLS);
   const truncated    = dates.length > MAX_COLS;
+  // Add-on visits happen during an existing visit, so they are not counted
+  // as separate visits in the header total.
+  const primaryVisitCount = visits.filter(v => !v.is_addon).length || visits.length;
 
   return (
     <div style={schedStyles.wrap}>
       <div style={schedStyles.header}>
         <span style={schedStyles.title}>Visit Schedule</span>
         <span style={schedStyles.dayCount}>
-          {dates.length} day{dates.length !== 1 ? 's' : ''} · {visits.length} visit{visits.length !== 1 ? 's' : ''}
+          {dates.length} day{dates.length !== 1 ? 's' : ''} · {primaryVisitCount} visit{primaryVisitCount !== 1 ? 's' : ''}
         </span>
       </div>
       <div style={{ overflowX: 'auto' }}>
