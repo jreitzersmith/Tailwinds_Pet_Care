@@ -7,13 +7,37 @@ import PropTypes from 'prop-types';
 const BASE_ADDRESS = '2500 South Blvd, Dallas, TX 75215';
 const BASE_COORDS  = { lat: 32.7359, lng: -96.8006 };
 
+// Calendar status palette (per contract). Tentative statuses (pending review /
+// changes awaiting customer) are rendered with a lighter/dashed treatment.
 const STATUS_COLOR = {
-  pending:     '#FFC107',
-  confirmed:   '#28A745',
-  in_progress: '#007BFF',
-  completed:   '#6C757D',
-  cancelled:   '#DC3545',
+  pending_company_review:   '#FFC107', // amber, tentative
+  changes_pending_customer: '#FD7E14', // orange, tentative
+  confirmed:                '#28A745', // green, solid
+  in_progress:              '#007BFF',
+  completed:                '#6C757D',
 };
+
+// Statuses that are not yet fully booked (shown with reduced opacity / dashed).
+const TENTATIVE_STATUSES = new Set(['pending_company_review', 'changes_pending_customer']);
+
+function isTentative(status) { return TENTATIVE_STATUSES.has(status); }
+function statusColor(status) { return STATUS_COLOR[status] || '#999'; }
+function statusLabel(status) { return String(status || '').replace(/_/g, ' '); }
+
+// Pet display for a booking — prefer booking_pets, fall back to legacy pets embed.
+function petLabel(b) {
+  const bp = b.booking_pets;
+  if (Array.isArray(bp) && bp.length > 0) {
+    return bp
+      .map(p => p.pet_name || p.pets?.name)
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (b.pets?.name) {
+    return b.pets.species ? `${b.pets.name} (${b.pets.species})` : b.pets.name;
+  }
+  return '';
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function isoDate(d) { return d.toISOString().split('T')[0]; }
@@ -72,6 +96,36 @@ async function buildRoute(bookings, apiKey) {
   return nearestNeighbor(BASE_COORDS, stops);
 }
 
+// ── Status legend (tentative vs confirmed) ────────────────────────────────────
+function StatusLegend() {
+  return (
+    <div style={cs.legend}>
+      {Object.entries(STATUS_COLOR).map(([status, color]) => (
+        <span key={status} style={cs.legendItem}>
+          <span
+            style={{
+              ...cs.dot,
+              background: color,
+              marginRight: '4px',
+              opacity: isTentative(status) ? 0.55 : 1,
+              border: isTentative(status) ? `1px dashed ${color}` : 'none',
+            }}
+          />
+          {statusLabel(status)}
+        </span>
+      ))}
+      <span style={{ ...cs.legendItem, marginLeft: '0.5rem', color: '#999' }}>
+        <span style={{ ...cs.dot, background: '#bbb', opacity: 0.55, border: '1px dashed #999', marginRight: '4px' }} />
+        tentative (awaiting approval)
+      </span>
+      <span style={cs.legendItem}>
+        <span style={{ ...cs.dot, background: '#28A745', marginRight: '4px' }} />
+        confirmed
+      </span>
+    </div>
+  );
+}
+
 // ── Month View ────────────────────────────────────────────────────────────────
 function MonthView({ current, bookings, onDayClick }) {
   const year     = current.getFullYear();
@@ -89,10 +143,16 @@ function MonthView({ current, bookings, onDayClick }) {
   while (cells.length < 42)
     cells.push(new Date(year, month + 1, cells.length - lastDay - startDay + 1));
 
+  // Expand multi-day bookings so every date in the range gets a dot
   const byDate = {};
   bookings.forEach(b => {
-    if (!byDate[b.booking_date]) byDate[b.booking_date] = [];
-    byDate[b.booking_date].push(b);
+    const s = new Date(b.booking_date + 'T00:00:00');
+    const e = new Date((b.booking_end_date || b.booking_date) + 'T00:00:00');
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      const key = isoDate(d);
+      if (!byDate[key]) byDate[key] = [];
+      if (!byDate[key].find(x => x.id === b.id)) byDate[key].push(b);
+    }
   });
 
   return (
@@ -114,13 +174,25 @@ function MonthView({ current, bookings, onDayClick }) {
             >
               <span style={isToday ? cs.todayNum : cs.cellNum}>{d.getDate()}</span>
               <div style={cs.dotRow}>
-                {dayBks.slice(0, 4).map((b, j) => (
-                  <span
-                    key={j}
-                    style={{ ...cs.dot, background: STATUS_COLOR[b.status] || '#999' }}
-                    title={`${b.customers?.full_name || ''} — ${b.services?.name || ''}`}
-                  />
-                ))}
+                {dayBks.slice(0, 4).map((b, j) => {
+                  const tentative = isTentative(b.status);
+                  const color     = statusColor(b.status);
+                  const petStr    = petLabel(b);
+                  return (
+                    <span
+                      key={j}
+                      style={{
+                        ...cs.dot,
+                        background: color,
+                        opacity: tentative ? 0.55 : 1,
+                        border: tentative ? `1px dashed ${color}` : 'none',
+                        boxSizing: 'border-box',
+                      }}
+                      title={`${b.customers?.full_name || ''} — ${b.services?.name || ''}` +
+                        (petStr ? ` — ${petStr}` : '') + ` (${statusLabel(b.status)})`}
+                    />
+                  );
+                })}
                 {dayBks.length > 4 && (
                   <span style={cs.moreDots}>+{dayBks.length - 4}</span>
                 )}
@@ -129,14 +201,7 @@ function MonthView({ current, bookings, onDayClick }) {
           );
         })}
       </div>
-      <div style={cs.legend}>
-        {Object.entries(STATUS_COLOR).map(([status, color]) => (
-          <span key={status} style={cs.legendItem}>
-            <span style={{ ...cs.dot, background: color, marginRight: '4px' }} />
-            {status.replace(/_/g, ' ')}
-          </span>
-        ))}
-      </div>
+      <StatusLegend />
     </div>
   );
 }
@@ -153,39 +218,63 @@ function WeekView({ current, bookings, onDayClick }) {
   const days  = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
   const today = isoDate(new Date());
 
+  // Expand multi-day bookings so every date in the range appears in the week
   const byDate = {};
   bookings.forEach(b => {
-    if (!byDate[b.booking_date]) byDate[b.booking_date] = [];
-    byDate[b.booking_date].push(b);
+    const s = new Date(b.booking_date + 'T00:00:00');
+    const e = new Date((b.booking_end_date || b.booking_date) + 'T00:00:00');
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      const key = isoDate(d);
+      if (!byDate[key]) byDate[key] = [];
+      if (!byDate[key].find(x => x.id === b.id)) byDate[key].push(b);
+    }
   });
 
   return (
-    <div style={cs.weekGrid}>
-      {days.map(d => {
-        const key    = isoDate(d);
-        const dayBks = byDate[key] || [];
-        const isToday = key === today;
-        return (
-          <div key={key} style={{ ...cs.weekCol, ...(isToday ? cs.weekColToday : {}) }}>
-            <div style={cs.weekColHeader} onClick={() => onDayClick(d)}>
-              <span style={cs.weekDayName}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-              <span style={{ ...cs.weekDayNum, ...(isToday ? cs.todayNum : {}) }}>{d.getDate()}</span>
+    <div>
+      <div style={cs.weekGrid}>
+        {days.map(d => {
+          const key    = isoDate(d);
+          const dayBks = byDate[key] || [];
+          const isToday = key === today;
+          return (
+            <div key={key} style={{ ...cs.weekCol, ...(isToday ? cs.weekColToday : {}) }}>
+              <div style={cs.weekColHeader} onClick={() => onDayClick(d)}>
+                <span style={cs.weekDayName}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                <span style={{ ...cs.weekDayNum, ...(isToday ? cs.todayNum : {}) }}>{d.getDate()}</span>
+              </div>
+              <div style={cs.weekBookings}>
+                {dayBks.length === 0 && (
+                  <span style={cs.emptyDay}>—</span>
+                )}
+                {dayBks.map(b => {
+                  const tentative = isTentative(b.status);
+                  const color     = statusColor(b.status);
+                  const petStr    = petLabel(b);
+                  return (
+                    <div
+                      key={b.id}
+                      style={{
+                        ...cs.weekCard,
+                        borderLeftColor: color,
+                        borderLeftStyle: tentative ? 'dashed' : 'solid',
+                        opacity: tentative ? 0.85 : 1,
+                      }}
+                      title={statusLabel(b.status)}
+                    >
+                      <span style={cs.weekCardService}>{b.services?.name || '—'}</span>
+                      <span style={cs.weekCardName}>{b.customers?.full_name || '—'}</span>
+                      {petStr && <span style={cs.weekCardName}>{petStr}</span>}
+                      {b.booking_time && <span style={cs.weekCardTime}>{b.booking_time}</span>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div style={cs.weekBookings}>
-              {dayBks.length === 0 && (
-                <span style={cs.emptyDay}>—</span>
-              )}
-              {dayBks.map(b => (
-                <div key={b.id} style={{ ...cs.weekCard, borderLeftColor: STATUS_COLOR[b.status] || '#999' }}>
-                  <span style={cs.weekCardService}>{b.services?.name || '—'}</span>
-                  <span style={cs.weekCardName}>{b.customers?.full_name || '—'}</span>
-                  {b.booking_time && <span style={cs.weekCardTime}>{b.booking_time}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <StatusLegend />
     </div>
   );
 }
@@ -229,7 +318,11 @@ function DropInModal({ date, onClose, onSuccess }) {
     const svc = services.find(s => s.name === 'Drop-In Visits');
     if (!svc) { setError('Drop-In Visits service not found in database.'); return; }
     setSubmitting(true); setError(null);
-    const { error: err } = await supabase.from('bookings').insert({
+
+    const unit = Number(svc.base_price) || 0;
+
+    // Create the booking (confirmed, admin drop-in).
+    const { data: booking, error: err } = await supabase.from('bookings').insert({
       customer_id:          customerId,
       pet_id:               petId || null,
       service_id:           svc.id,
@@ -239,13 +332,44 @@ function DropInModal({ date, onClose, onSuccess }) {
       status:               'confirmed',
       zone:                 null,
       travel_fee:           0,
-      base_price:           Number(svc.base_price) || 0,
-      total_price:          Number(svc.base_price) || 0,
+      base_price:           unit,
+      total_price:          unit,
       special_instructions: notes || null,
       addon_service_ids:    [],
-    });
+    }).select('id').single();
+
+    if (err) { setSubmitting(false); setError(err.message); return; }
+
+    // Mirror the new data model: one booking_visits row (and a booking_pets
+    // row when a pet was chosen) so downstream views reconcile via visitModel.
+    const selectedPet = pets.find(p => p.id === petId);
+    const visitRow = {
+      booking_id:   booking.id,
+      service_id:   svc.id,
+      service_name: svc.name,
+      visit_date:   isoDate(date),
+      shift_id:     'scheduled',
+      shift_label:  'Scheduled',
+      shift_time:   time || null,
+      is_addon:     false,
+      unit_price:   unit,
+      pet_count:    1,
+      is_quote:     false,
+      line_total:   unit,
+    };
+    const { error: visitErr } = await supabase.from('booking_visits').insert(visitRow);
+    if (visitErr) console.warn('booking_visits insert failed:', visitErr.message);
+
+    if (petId) {
+      const { error: petErr } = await supabase.from('booking_pets').insert({
+        booking_id: booking.id,
+        pet_id:     petId,
+        pet_name:   selectedPet?.name || null,
+      });
+      if (petErr) console.warn('booking_pets insert failed:', petErr.message);
+    }
+
     setSubmitting(false);
-    if (err) { setError(err.message); return; }
     onSuccess();
   }
 
@@ -341,22 +465,34 @@ function DayView({ current, bookings, onRefresh }) {
 
         {sorted.length === 0 && <p style={cs.emptyDay}>No bookings for this day.</p>}
 
-        {sorted.map(b => (
-          <div key={b.id} style={{ ...cs.dayCard, borderLeftColor: STATUS_COLOR[b.status] || '#999' }}>
-            <div style={cs.dayCardTime}>{b.booking_time || 'TBD'}</div>
-            <div style={cs.dayCardBody}>
-              <span style={cs.dayCardService}>{b.services?.name || '—'}</span>
-              <span style={cs.dayCardCustomer}>{b.customers?.full_name || '—'}</span>
-              {b.customers?.phone && <span style={cs.dayCardDetail}>{b.customers.phone}</span>}
-              {b.pets?.name && (
-                <span style={cs.dayCardDetail}>{b.pets.name} ({b.pets.species})</span>
-              )}
-              <span style={{ ...cs.dayCardStatus, color: STATUS_COLOR[b.status] || '#999' }}>
-                {b.status.replace(/_/g, ' ')}
-              </span>
+        {sorted.map(b => {
+          const tentative = isTentative(b.status);
+          const color     = statusColor(b.status);
+          const petStr    = petLabel(b);
+          return (
+            <div
+              key={b.id}
+              style={{
+                ...cs.dayCard,
+                borderLeftColor: color,
+                borderLeftStyle: tentative ? 'dashed' : 'solid',
+                opacity: tentative ? 0.9 : 1,
+              }}
+            >
+              <div style={cs.dayCardTime}>{b.booking_time || 'TBD'}</div>
+              <div style={cs.dayCardBody}>
+                <span style={cs.dayCardService}>{b.services?.name || '—'}</span>
+                <span style={cs.dayCardCustomer}>{b.customers?.full_name || '—'}</span>
+                {b.customers?.phone && <span style={cs.dayCardDetail}>{b.customers.phone}</span>}
+                {petStr && <span style={cs.dayCardDetail}>{petStr}</span>}
+                <span style={{ ...cs.dayCardStatus, color }}>
+                  {statusLabel(b.status)}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        <StatusLegend />
       </div>
 
       {/* Route pane */}
@@ -444,13 +580,17 @@ export default function AdminCalendarPanel() {
       .from('bookings')
       .select(`
         id, booking_date, booking_end_date, booking_time, status, total_price,
-        customers ( full_name, email, phone, address ),
-        services  ( name ),
-        pets      ( name, species )
+        customers   ( full_name, email, phone, address ),
+        services    ( name ),
+        pets        ( name, species ),
+        booking_pets ( pet_name, pets ( name, species ) )
       `)
-      .gte('booking_date', startStr)
+      // Fetch any booking whose date range overlaps the visible window.
+      // booking_date <= endStr AND booking_end_date >= startStr covers
+      // single-day, multi-day starting in window, and multi-day starting before.
       .lte('booking_date', endStr)
-      .neq('status', 'cancelled')
+      .gte('booking_end_date', startStr)
+      .not('status', 'in', '("cancelled","declined")')
       .order('booking_date')
       .order('booking_time', { nullsFirst: false });
 
@@ -482,8 +622,13 @@ export default function AdminCalendarPanel() {
     return current.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }
 
+  // Include booking on any day it spans, not just its start date
+  const todayStr    = isoDate(current);
   const dayBookings = view === 'day'
-    ? bookings.filter(b => b.booking_date === isoDate(current))
+    ? bookings.filter(b =>
+        b.booking_date <= todayStr &&
+        (b.booking_end_date || b.booking_date) >= todayStr
+      )
     : bookings;
 
   return (
