@@ -7,6 +7,15 @@ import useLoadGoogleMaps from '../serviceArea/useLoadGoogleMaps.js';
 
 const DFW_BOUNDS = { north: 33.35, south: 32.35, east: -96.45, west: -97.65 };
 
+// Format a US phone number progressively as (xxx) xxx-xxxx.
+function formatPhone(v) {
+  const d = (v || '').replace(/\D/g, '').slice(0, 10);
+  if (d.length === 0) return '';
+  if (d.length < 4)  return '(' + d;
+  if (d.length < 7)  return '(' + d.slice(0, 3) + ') ' + d.slice(3);
+  return '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
+}
+
 const BLANK = {
   phone: '',
   airline: '',
@@ -43,12 +52,12 @@ export default function AccountSettings() {
       if (error) { setFetchErr(error.message); }
       else {
         setProfile({
-          phone:                 data.phone                 ?? '',
+          phone:                 formatPhone(data.phone                 ?? ''),
           airline:               data.airline               ?? '',
           address:               data.address               ?? '',
           preferred_vet_name:    data.preferred_vet_name    ?? '',
           preferred_vet_clinic:  data.preferred_vet_clinic  ?? '',
-          preferred_vet_phone:   data.preferred_vet_phone   ?? '',
+          preferred_vet_phone:   formatPhone(data.preferred_vet_phone   ?? ''),
           preferred_vet_address: data.preferred_vet_address ?? '',
         });
       }
@@ -117,7 +126,7 @@ export default function AccountSettings() {
               style={s.input}
               type='tel'
               value={profile.phone}
-              onChange={e => update('phone', e.target.value)}
+              onChange={e => update('phone', formatPhone(e.target.value))}
               placeholder='(214) 555-0100'
             />
           </label>
