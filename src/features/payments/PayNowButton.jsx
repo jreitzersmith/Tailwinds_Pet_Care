@@ -82,7 +82,15 @@ export default function PayNowButton({ invoice, onPaid }) {
       const { data, error: fnErr } = await supabase.functions.invoke('charge-invoice', {
         body: { invoiceId: invoice.id, sourceId: result.token },
       });
-      if (fnErr) throw new Error(fnErr.message || 'Payment failed.');
+      if (fnErr) {
+        // Surface the real error the edge function returned (e.g. a Square message).
+        let detail = fnErr.message || 'Payment failed.';
+        try {
+          const body = await fnErr.context?.json?.();
+          if (body?.error) detail = body.error;
+        } catch { /* keep generic message */ }
+        throw new Error(detail);
+      }
       if (data?.error) throw new Error(data.error);
       setStatus('done');
       onPaid?.();
