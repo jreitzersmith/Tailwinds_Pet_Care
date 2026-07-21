@@ -15,6 +15,7 @@ import UpdatePasswordPage from './features/auth/UpdatePasswordPage.jsx';
 import BookingPage from './features/booking/BookingPage.jsx';
 import PortalPage from './features/portal/PortalPage.jsx';
 import AdminPage from './features/admin/AdminPage.jsx';
+import PetPassportPage from './features/passport/PetPassportPage.jsx';
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
             <Route path='/signup' element={<SignupPage />} />
             <Route path='/reset-password' element={<ResetPasswordPage />} />
             <Route path='/update-password' element={<UpdatePasswordPage />} />
+            <Route path='/passport/:token' element={<PetPassportPage />} />
             <Route path='/book' element={
               <ProtectedRoute><BookingPage /></ProtectedRoute>
             } />

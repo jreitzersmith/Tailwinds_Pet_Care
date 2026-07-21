@@ -4,6 +4,7 @@ import supabase from '../../../utils/supabase.js';
 import { COLORS, FONTS } from '../../../constants.jsx';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { getZoneForPoint } from '../../serviceArea/serviceAreaData.js';
+import { buildVisitRows, summarizeVisits } from '../visitModel.js';
 
 const TRANSPORT_SVC = 'Pet Transport (Within DFW)';
 const SINGLE_SELECT_CATS = new Set(['Sitting & Visits', 'Dog Walking', 'Transportation']);
@@ -37,6 +38,21 @@ function countChecked(slots) {
 }
 
 const DEFAULT_ROWS = [{ id: 'morning', label: 'Morning' }, { id: 'evening', label: 'Evening' }];
+
+// Build slots with all row IDs checked for each date in range (used when restoring edit-mode extra services)
+function buildEditSlots(startDate, endDate, rows) {
+  if (!startDate || !rows || !rows.length) return {};
+  const slots = {};
+  const curr = new Date(startDate + 'T00:00:00');
+  const last = new Date((endDate || startDate) + 'T00:00:00');
+  while (curr <= last) {
+    const d = curr.toISOString().split('T')[0];
+    slots[d] = {};
+    rows.forEach(row => { slots[d][row.id] = true; });
+    curr.setDate(curr.getDate() + 1);
+  }
+  return slots;
+}
 
 function getServiceSlotConfig(name) {
   if (NO_SLOT_SVCS.includes(name)) return null;
@@ -87,6 +103,12 @@ export default function ServiceStep({ booking }) {
   const destInputRef   = useRef(null);
 
   const dates = getDateRange(form.bookingDate, form.bookingEndDate);
+  const petCount = Math.max(
+    (form.petIds || []).length + (form.petIsNew && (form.newPet?.name || '').trim() ? 1 : 0),
+    1
+  );
+  const servicesById = Object.fromEntries(allServices.map(sv => [sv.id, sv]));
+  function petFactor(svc) { return svc && svc.price_per_pet ? petCount : 1; }
 
   const primaryServices = allServices.filter(s => !s.addon_for);
   const grouped = primaryServices.reduce((acc, svc) => {
@@ -108,15 +130,82 @@ export default function ServiceStep({ booking }) {
     async function fetchServices() {
       setLoading(true);
       const { data, error: err } = await supabase
-        .from('services').select('id, category, name, description, base_price, addon_for')
+        .from('services').select('id, category, name, description, base_price, addon_for, price_per_pet')
         .eq('is_active', true).order('sort_order');
       if (err) { setError(err.message); setLoading(false); return; }
       setAllServices(data);
       setLoading(false);
       const cats = [...new Set(data.filter(s => !s.addon_for).map(s => s.category))];
       setCollapsedCats(new Set(cats.filter(c => c !== 'Sitting & Visits')));
+
+      // ── Edit-mode: redistribute addon_service_ids into addonIds vs extraServiceIds ──
+      // When editing, BookingPage passes ALL addon_service_ids as form.addonIds.
+      // But the UI renders multi-select "extra services" (Plant Watering etc.) under
+      // form.extraServiceIds. Split them here now that we have the service data.
+      if (form.editBookingId && (form.addonIds || []).length > 0) {
+        const svcMap = Object.fromEntries(data.map(s => [s.id, s]));
+        const trueAddonIds   = [];
+        const trueAddonNames = [];
+        const extraIds       = [];
+        const extraNames     = [];
+        const extraData      = {};
+
+        form.addonIds.forEach(id => {
+          const svc = svcMap[id];
+          if (!svc) return;
+          const isDependent = svc.addon_for && svc.addon_for.length > 0;
+          if (isDependent) {
+            trueAddonIds.push(id);
+            trueAddonNames.push(svc.name);
+          } else {
+            // Extra service (independent multi-select category)
+            extraIds.push(id);
+            extraNames.push(svc.name);
+            const cfg      = getExtraServiceConfig(svc.name);
+            const editRows  = cfg.defaultRows ? [...cfg.defaultRows] : [...DEFAULT_ROWS];
+            const editSlots = cfg.type !== 'fields'
+              ? buildEditSlots(form.bookingDate, form.bookingEndDate, editRows)
+              : {};
+            extraData[id] = {
+              rows:          editRows,
+              slots:         editSlots,
+              preferredTime: '',
+              date:          '',
+              time:          '',
+              details:       '',
+            };
+          }
+        });
+
+        // Compute extraTotal from the pre-checked slots × per-unit price
+        const extraTotal = extraIds.reduce((sum, id) => {
+          const svc = svcMap[id];
+          if (!svc || svc.base_price === null) return sum;
+          const cfg = getExtraServiceConfig(svc.name);
+          if (cfg.type === 'fields') return sum + Number(svc.base_price);
+          return sum + Number(svc.base_price) * countChecked((extraData[id] || {}).slots || {});
+        }, 0);
+
+        // Compute addonTotal from pre-checked addonSlots (set by BookingPage.initialOverride)
+        const addonTotal = trueAddonIds.reduce((sum, id) => {
+          const svc = svcMap[id];
+          if (!svc || svc.base_price === null) return sum;
+          return sum + Number(svc.base_price) * countChecked((form.addonSlots || {})[id] || {});
+        }, 0);
+
+        update({
+          addonIds:          trueAddonIds,
+          addonNames:        trueAddonNames,
+          addonTotal,
+          extraServiceIds:   extraIds,
+          extraServiceNames: extraNames,
+          extraServiceData:  extraData,
+          extraTotal,
+        });
+      }
     }
     fetchServices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -212,8 +301,11 @@ export default function ServiceStep({ booking }) {
     if (!isTransport && !isQuote && config && ps) {
       const FEEDING_CATS = new Set(['Sitting & Visits']);
       const WALKING_CATS = new Set(['Dog Walking']);
+      const SLOT_ORDER   = ['morning', 'midday', 'evening'];
       const times = FEEDING_CATS.has(svc.category)
-        ? (ps.feeding_times || [])
+        // Drop-In covers all scheduled activities — union of feeding + walking times
+        ? SLOT_ORDER.filter(t =>
+            (ps.feeding_times || []).includes(t) || (ps.walking_times || []).includes(t))
         : WALKING_CATS.has(svc.category)
           ? (ps.walking_times || [])
           : [];
@@ -299,18 +391,64 @@ export default function ServiceStep({ booking }) {
   function handleSlotChange(newSlots) {
     const n    = countChecked(newSlots);
     const unit = form.baseUnitPrice || Number(selectedPrimary?.base_price || 0);
-    update({ serviceSlots: newSlots, basePrice: unit * n });
+    // Cascade parent unchecks to all addon slots
+    const prevSlots     = form.serviceSlots || {};
+    const newAddonSlots = { ...(form.addonSlots || {}) };
+    let addonChanged    = false;
+    (form.addonIds || []).forEach(addonId => {
+      const addonSlots = { ...(newAddonSlots[addonId] || {}) };
+      let innerChanged = false;
+      Object.keys(prevSlots).forEach(date => {
+        Object.keys(prevSlots[date] || {}).forEach(rowId => {
+          if (prevSlots[date][rowId] && !newSlots?.[date]?.[rowId]) {
+            if (addonSlots[date]?.[rowId]) {
+              addonSlots[date] = { ...(addonSlots[date] || {}), [rowId]: false };
+              innerChanged = true;
+            }
+          }
+        });
+      });
+      if (innerChanged) { newAddonSlots[addonId] = addonSlots; addonChanged = true; }
+    });
+    const updates = { serviceSlots: newSlots, basePrice: unit * n };
+    if (addonChanged) {
+      const newAddonTotal = (form.addonIds || []).reduce((sum, id) => {
+        const svc = allServices.find(s => s.id === id);
+        if (!svc || svc.base_price === null) return sum;
+        return sum + Number(svc.base_price) * countChecked(newAddonSlots[id] || {});
+      }, 0);
+      updates.addonSlots = newAddonSlots;
+      updates.addonTotal = newAddonTotal;
+    }
+    update(updates);
   }
   function handleRowsChange(newRows) { update({ serviceSlotRows: newRows }); }
 
   function handleAddonSlotChange(addonId, newSlots) {
     const newAddonSlots = { ...(form.addonSlots || {}), [addonId]: newSlots };
+    // Auto-check parent for any addon slot that is now checked but parent is not
+    const parentSlots = { ...(form.serviceSlots || {}) };
+    let parentChanged = false;
+    Object.entries(newSlots).forEach(([date, daySlots]) => {
+      Object.entries(daySlots || {}).forEach(([rowId, checked]) => {
+        if (checked && !parentSlots?.[date]?.[rowId]) {
+          parentSlots[date] = { ...(parentSlots[date] || {}), [rowId]: true };
+          parentChanged = true;
+        }
+      });
+    });
     const newTotal = (form.addonIds || []).reduce((sum, id) => {
       const svc = allServices.find(s => s.id === id);
       if (!svc || svc.base_price === null) return sum;
       return sum + Number(svc.base_price) * countChecked(newAddonSlots[id] || {});
     }, 0);
-    update({ addonSlots: newAddonSlots, addonTotal: newTotal });
+    const updates = { addonSlots: newAddonSlots, addonTotal: newTotal };
+    if (parentChanged) {
+      const unit = form.baseUnitPrice || Number(selectedPrimary?.base_price || 0);
+      updates.serviceSlots = parentSlots;
+      updates.basePrice    = unit * countChecked(parentSlots);
+    }
+    update(updates);
   }
   function handleAddonRowsChange(addonId, newRows) {
     update({ addonSlotRows: { ...(form.addonSlotRows || {}), [addonId]: newRows } });
@@ -376,17 +514,17 @@ export default function ServiceStep({ booking }) {
     if (svc.base_price === null || svc.base_price === undefined) return 'Request a Quote';
     if (form.serviceId === svc.id) {
       const n = countChecked(form.serviceSlots || {});
-      if (n > 0) return `$${(Number(svc.base_price) * n).toLocaleString()}`;
+      if (n > 0) return `$${(Number(svc.base_price) * petFactor(svc) * n).toLocaleString()}`;
     }
-    return `$${Number(svc.base_price)}`;
+    return `$${Number(svc.base_price) * petFactor(svc)}`;
   }
   function displayAddonPrice(addon) {
     if (addon.base_price === null || addon.base_price === undefined) return 'Quote';
     if ((form.addonIds || []).includes(addon.id)) {
       const n = countChecked((form.addonSlots || {})[addon.id] || {});
-      if (n > 0) return `+$${(Number(addon.base_price) * n).toLocaleString()}`;
+      if (n > 0) return `+$${(Number(addon.base_price) * petFactor(addon) * n).toLocaleString()}`;
     }
-    return `+$${Number(addon.base_price)}`;
+    return `+$${Number(addon.base_price) * petFactor(addon)}`;
   }
   function displayExtraPrice(svc) {
     if (svc.base_price === null || svc.base_price === undefined) return 'Quote';
@@ -394,43 +532,18 @@ export default function ServiceStep({ booking }) {
       const cfg = getExtraServiceConfig(svc.name);
       if (cfg.type !== 'fields') {
         const n = countChecked(((form.extraServiceData || {})[svc.id] || {}).slots || {});
-        if (n > 0) return `$${(Number(svc.base_price) * n).toLocaleString()}`;
+        if (n > 0) return `$${(Number(svc.base_price) * petFactor(svc) * n).toLocaleString()}`;
       }
     }
-    return `$${Number(svc.base_price)}`;
+    return `$${Number(svc.base_price) * petFactor(svc)}`;
   }
 
-  // Running total — recomputed every render
-  let runningTotal = 0;
-  let hasSelection = false;
-  if (selectedPrimary) {
-    hasSelection = true;
-    if (isTransportSelected && transPricing) {
-      runningTotal += transPricing.price;
-    } else if (!form.isQuote && selectedPrimary.base_price !== null) {
-      const unit = Number(selectedPrimary.base_price);
-      const hasGrid = getServiceSlotConfig(selectedPrimary.name) !== null;
-      runningTotal += unit * (hasGrid ? countChecked(form.serviceSlots || {}) : 1);
-    }
-  }
-  (form.addonIds || []).forEach(id => {
-    const svc = allServices.find(s => s.id === id);
-    if (svc && svc.base_price !== null) {
-      hasSelection = true;
-      runningTotal += Number(svc.base_price) * countChecked((form.addonSlots || {})[id] || {});
-    }
-  });
-  (form.extraServiceIds || []).forEach(id => {
-    const svc = allServices.find(s => s.id === id);
-    if (svc && svc.base_price !== null) {
-      hasSelection = true;
-      const cfg = getExtraServiceConfig(svc.name);
-      runningTotal += cfg.type === 'fields'
-        ? Number(svc.base_price)
-        : Number(svc.base_price) * countChecked(((form.extraServiceData || {})[id] || {}).slots || {});
-    }
-  });
-  if (form.travelFee) runningTotal += form.travelFee;
+  // Running total — derived from the same visit model used at persist time,
+  // so the estimate shown here always reconciles with the final invoice.
+  const _visitRows   = buildVisitRows(form, servicesById);
+  const _visitTotals = summarizeVisits(_visitRows, form.travelFee || 0);
+  const runningTotal = _visitTotals.total;
+  const hasSelection = _visitRows.length > 0 || !!form.serviceId || (form.extraServiceIds || []).length > 0;
 
   const hasPrimary  = !!form.serviceId;
   const hasExtra    = (form.extraServiceIds || []).length > 0;

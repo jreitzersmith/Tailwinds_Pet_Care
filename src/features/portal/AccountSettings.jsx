@@ -7,13 +7,35 @@ import useLoadGoogleMaps from '../serviceArea/useLoadGoogleMaps.js';
 
 const DFW_BOUNDS = { north: 33.35, south: 32.35, east: -96.45, west: -97.65 };
 
+// Format a US phone number progressively as (xxx) xxx-xxxx.
+function formatPhone(v) {
+  const d = (v || '').replace(/\D/g, '').slice(0, 10);
+  if (d.length === 0) return '';
+  if (d.length < 4)  return '(' + d;
+  if (d.length < 7)  return '(' + d.slice(0, 3) + ') ' + d.slice(3);
+  return '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
+}
+
 const BLANK = {
+  phone: '',
+  airline: '',
   address: '',
   preferred_vet_name: '',
   preferred_vet_clinic: '',
   preferred_vet_phone: '',
   preferred_vet_address: '',
+  emergency_vet_name: '',
+  emergency_vet_clinic: '',
+  emergency_vet_phone: '',
+  emergency_vet_address: '',
+  emergency_contact_name: '',
+  emergency_contact_phone: '',
+  emergency_contact_relationship: '',
 };
+
+const PHONE_FIELDS = new Set([
+  'phone', 'preferred_vet_phone', 'emergency_vet_phone', 'emergency_contact_phone',
+]);
 
 export default function AccountSettings() {
   const { user } = useAuth();
@@ -31,22 +53,35 @@ export default function AccountSettings() {
   const addrInputRef = useRef(null);
   const acRef        = useRef(null);
 
-  // Load customer profile
   useEffect(() => {
     async function load() {
       const { data, error } = await supabase
         .from('customers')
-        .select('address, preferred_vet_name, preferred_vet_clinic, preferred_vet_phone, preferred_vet_address')
+        .select(`
+          phone, airline, address,
+          preferred_vet_name, preferred_vet_clinic, preferred_vet_phone, preferred_vet_address,
+          emergency_vet_name, emergency_vet_clinic, emergency_vet_phone, emergency_vet_address,
+          emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
+        `)
         .eq('id', user.id)
         .single();
       if (error) { setFetchErr(error.message); }
       else {
         setProfile({
-          address:               data.address               ?? '',
-          preferred_vet_name:    data.preferred_vet_name    ?? '',
-          preferred_vet_clinic:  data.preferred_vet_clinic  ?? '',
-          preferred_vet_phone:   data.preferred_vet_phone   ?? '',
-          preferred_vet_address: data.preferred_vet_address ?? '',
+          phone:                          formatPhone(data.phone                          ?? ''),
+          airline:                        data.airline                        ?? '',
+          address:                        data.address                        ?? '',
+          preferred_vet_name:             data.preferred_vet_name             ?? '',
+          preferred_vet_clinic:           data.preferred_vet_clinic           ?? '',
+          preferred_vet_phone:            formatPhone(data.preferred_vet_phone            ?? ''),
+          preferred_vet_address:          data.preferred_vet_address          ?? '',
+          emergency_vet_name:             data.emergency_vet_name             ?? '',
+          emergency_vet_clinic:           data.emergency_vet_clinic           ?? '',
+          emergency_vet_phone:            formatPhone(data.emergency_vet_phone            ?? ''),
+          emergency_vet_address:          data.emergency_vet_address          ?? '',
+          emergency_contact_name:         data.emergency_contact_name         ?? '',
+          emergency_contact_phone:        formatPhone(data.emergency_contact_phone        ?? ''),
+          emergency_contact_relationship: data.emergency_contact_relationship ?? '',
         });
       }
       setLoading(false);
@@ -54,7 +89,6 @@ export default function AccountSettings() {
     load();
   }, [user.id]);
 
-  // Init Places Autocomplete once Maps API is ready and the input is mounted
   useEffect(() => {
     if (!mapsLoaded || !addrInputRef.current || acRef.current) return;
     (async () => {
@@ -79,18 +113,27 @@ export default function AccountSettings() {
   }, [mapsLoaded]);
 
   function update(field, val) {
-    setProfile(prev => ({ ...prev, [field]: val }));
+    setProfile(prev => ({ ...prev, [field]: PHONE_FIELDS.has(field) ? formatPhone(val) : val }));
     setSaved(false);
   }
 
   async function handleSave() {
     setSaving(true); setSaveErr(null);
     const { error } = await supabase.from('customers').update({
-      address:               profile.address               || null,
-      preferred_vet_name:    profile.preferred_vet_name    || null,
-      preferred_vet_clinic:  profile.preferred_vet_clinic  || null,
-      preferred_vet_phone:   profile.preferred_vet_phone   || null,
-      preferred_vet_address: profile.preferred_vet_address || null,
+      phone:                          profile.phone                          || null,
+      airline:                        profile.airline                        || null,
+      address:                        profile.address                        || null,
+      preferred_vet_name:             profile.preferred_vet_name             || null,
+      preferred_vet_clinic:           profile.preferred_vet_clinic           || null,
+      preferred_vet_phone:            profile.preferred_vet_phone            || null,
+      preferred_vet_address:          profile.preferred_vet_address          || null,
+      emergency_vet_name:             profile.emergency_vet_name             || null,
+      emergency_vet_clinic:           profile.emergency_vet_clinic           || null,
+      emergency_vet_phone:            profile.emergency_vet_phone            || null,
+      emergency_vet_address:          profile.emergency_vet_address          || null,
+      emergency_contact_name:         profile.emergency_contact_name         || null,
+      emergency_contact_phone:        profile.emergency_contact_phone        || null,
+      emergency_contact_relationship: profile.emergency_contact_relationship || null,
     }).eq('id', user.id);
     setSaving(false);
     if (error) { setSaveErr(error.message); }
@@ -102,6 +145,37 @@ export default function AccountSettings() {
 
   return (
     <div style={s.wrap}>
+
+      {/* Contact Information */}
+      <section style={s.section}>
+        <h2 style={s.sectionHead}>Contact Information</h2>
+        <p style={s.hint}>Your phone number and airline — helps us reach you during your trips.</p>
+        <div style={s.grid}>
+          <label style={s.label}>Phone Number
+            <input
+              style={s.input}
+              type='tel'
+              value={profile.phone}
+              onChange={e => update('phone', e.target.value)}
+              placeholder='(214) 555-0100'
+            />
+          </label>
+          <label style={s.label}>Affiliated Airline
+            <select
+              style={s.select}
+              value={profile.airline}
+              onChange={e => update('airline', e.target.value)}
+            >
+              <option value=''>None / Not Affiliated</option>
+              <option value='Southwest'>Southwest Airlines</option>
+              <option value='American'>American Airlines</option>
+              <option value='United'>United Airlines</option>
+              <option value='Delta'>Delta Air Lines</option>
+              <option value='Other'>Other</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       {/* Service Address */}
       <section style={s.section}>
@@ -142,6 +216,60 @@ export default function AccountSettings() {
         </div>
       </section>
 
+      {/* Emergency Vet */}
+      <section style={s.section}>
+        <h2 style={s.sectionHead}>Emergency / After-Hours Vet</h2>
+        <p style={s.hint}>
+          Optional — where your sitter should go if your preferred vet is unreachable and your pet
+          needs urgent care while you&apos;re unreachable mid-flight.
+        </p>
+        <div style={s.grid}>
+          {[
+            { field: 'emergency_vet_name',    label: 'Vet / Clinic Name', placeholder: 'DFW Emergency Pet Clinic' },
+            { field: 'emergency_vet_clinic',  label: 'Clinic Name',       placeholder: '24-Hour Animal Hospital' },
+            { field: 'emergency_vet_phone',   label: 'Phone',             placeholder: '(214) 555-0199', type: 'tel' },
+            { field: 'emergency_vet_address', label: 'Address',          placeholder: '789 Pine St, Dallas, TX 75203' },
+          ].map(({ field, label, placeholder, type }) => (
+            <label key={field} style={s.label}>{label}
+              <input style={s.input} type={type || 'text'}
+                value={profile[field]}
+                onChange={e => update(field, e.target.value)}
+                placeholder={placeholder}
+              />
+            </label>
+          ))}
+        </div>
+      </section>
+
+      {/* Emergency Contact */}
+      <section style={s.section}>
+        <h2 style={s.sectionHead}>Emergency Contact</h2>
+        <p style={s.hint}>
+          A backup person we can reach if we can&apos;t get ahold of you — a family member,
+          neighbor, or friend.
+        </p>
+        <div style={s.grid}>
+          <label style={s.label}>Name
+            <input style={s.input} type='text'
+              value={profile.emergency_contact_name}
+              onChange={e => update('emergency_contact_name', e.target.value)}
+              placeholder='Jane Doe' />
+          </label>
+          <label style={s.label}>Phone
+            <input style={s.input} type='tel'
+              value={profile.emergency_contact_phone}
+              onChange={e => update('emergency_contact_phone', e.target.value)}
+              placeholder='(214) 555-0177' />
+          </label>
+          <label style={s.label}>Relationship
+            <input style={s.input} type='text'
+              value={profile.emergency_contact_relationship}
+              onChange={e => update('emergency_contact_relationship', e.target.value)}
+              placeholder='Sister, neighbor, friend…' />
+          </label>
+        </div>
+      </section>
+
       {saveErr && <p style={s.errMsg}>{saveErr}</p>}
       {saved   && <p style={s.okMsg}>Saved!</p>}
       <button style={s.saveBtn} onClick={handleSave} disabled={saving}>
@@ -151,9 +279,7 @@ export default function AccountSettings() {
       {/* Payment Methods — Phase 3 */}
       <section style={{ ...s.section, marginTop: '2rem', borderBottom: 'none' }}>
         <h2 style={s.sectionHead}>Payment Methods</h2>
-        <p style={s.hint}>
-          Securely save a credit card or PayPal account for faster checkout.
-        </p>
+        <p style={s.hint}>Securely save a credit card or PayPal account for faster checkout.</p>
         <div style={s.paymentPlaceholder}>
           <span style={s.paymentIcon}>💳</span>
           <p style={s.paymentMsg}>
@@ -182,6 +308,12 @@ const s = {
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
     outline: 'none', fontFamily: FONTS.body,
   },
+  select: {
+    padding: '0.55rem 0.75rem', borderRadius: '6px',
+    border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
+    outline: 'none', fontFamily: FONTS.body, background: COLORS.white,
+    color: COLORS.black, cursor: 'pointer',
+  },
   grid:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 1rem' },
   errMsg: { fontFamily: FONTS.body, color: COLORS.red, marginBottom: '0.75rem' },
   okMsg:  { fontFamily: FONTS.body, color: '#2a7a3b', marginBottom: '0.75rem' },
@@ -192,9 +324,7 @@ const s = {
     padding: '1rem 1.25rem', marginTop: '0.5rem',
   },
   paymentIcon: { fontSize: '1.8rem', flexShrink: 0 },
-  paymentMsg: {
-    fontFamily: FONTS.body, fontSize: '0.875rem', color: '#777', margin: 0, lineHeight: 1.5,
-  },
+  paymentMsg:  { fontFamily: FONTS.body, fontSize: '0.875rem', color: '#777', margin: 0, lineHeight: 1.5 },
   saveBtn: {
     padding: '0.65rem 2rem', background: COLORS.blue, color: COLORS.white,
     border: 'none', borderRadius: '8px', fontSize: '1rem', cursor: 'pointer',

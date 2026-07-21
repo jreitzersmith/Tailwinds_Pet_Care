@@ -8,7 +8,7 @@ Format: `| Date | ID | Description | Commit |`
 | Date       | ID    | Description                                                                                                          | Commit |
 |------------|-------|----------------------------------------------------------------------------------------------------------------------|--------|
 | 2026-06-17 | BIZ-0 | Entity: SoS name availability confirmed; Certificate of Formation filed (doc 1598115070003); EIN 42-3224280 obtained | —      |
-| 2026-06-19 | BIZ-0 | Insurance: PSA policy 3ED4170 activated — includes animal bailee/CCC and surety bond coverage                        | —      |
+| 2026-06-19 | BIZ-0 | Insurance: PSA policy activated — includes animal bailee/CCC and surety bond coverage                        | —      |
 | 2026-06-19 | FR-0  | Scaffold: Vite + React 18; package.json; vite.config.js; index.html; constants.jsx; App.jsx routing; Layout/Nav/Footer| —      |
 | 2026-06-19 | FR-0  | Phase 1 pages: HeroSection, HomePage, ServicesPage/ServiceCard/servicesData, AboutPage, ContactPage/useContactForm   | —      |
 | 2026-06-19 | FR-0  | Phase 1 pages: ServiceAreaPage, AddressSearch, serviceAreaData, useLoadGoogleMaps, useZoneLookup                     | —      |

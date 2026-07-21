@@ -7,7 +7,7 @@ const INITIAL = {
   // Service selection
   serviceId: null,
   serviceName: '',
-  basePrice: 0,       // multiplied total (unit × checked count); updated live
+  basePrice: 0,       // multiplied total (unit x checked count); updated live
   baseUnitPrice: 0,   // per-slot unit price; set on service select
   isQuote: false,
   addonIds: [],
@@ -24,13 +24,15 @@ const INITIAL = {
   bookingDate: '',
   bookingEndDate: '',
   bookingTime: '',
-  // Pet
-  petId: null, petName: ``,
+  // Pets (multi-select). petIds/petNames are the source of truth.
+  // petId/petName retained for backward-compat (= first selected pet).
+  petIds: [], petNames: [],
+  petId: null, petName: '',
   petIsNew: false,
   petSchedule: null,
   newPet: {
     name: '', species: 'Dog', breed: '', age_years: '', weight_lbs: '', notes: '',
-    diet: [], walking_schedule: [],
+    diet: [], walking_schedule: [], medications: [],
   },
   // Slot grid for primary service
   serviceSlotRows: [{ id: 'morning', label: 'Morning' }, { id: 'evening', label: 'Evening' }],
@@ -38,7 +40,7 @@ const INITIAL = {
   // Confirm — pricing resolved from address
   address: '',
   zone: null,
-  travelFee: 0,
+  travelFee: 0,       // per-day zone fee
   totalPrice: 0,
   specialInstructions: '',
   transportOrigin: '',
@@ -53,7 +55,15 @@ export default function useBookingForm(initialOverride = {}) {
   const [errors, setErrors] = useState({});
 
   function update(fields) {
-    setForm(prev => ({ ...prev, ...fields }));
+    setForm(prev => {
+      const next = { ...prev, ...fields };
+      // Keep legacy single-pet fields in sync with the array selection.
+      if ('petIds' in fields || 'petNames' in fields) {
+        next.petId   = (next.petIds || [])[0] || null;
+        next.petName = (next.petNames || [])[0] || '';
+      }
+      return next;
+    });
   }
   function next() { setErrors({}); setStep(s => Math.min(s + 1, STEPS.length - 1)); }
   function back() { setErrors({}); setStep(s => Math.max(s - 1, 0)); }

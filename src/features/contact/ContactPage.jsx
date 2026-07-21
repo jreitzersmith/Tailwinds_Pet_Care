@@ -1,4 +1,5 @@
-﻿import useContactForm from './useContactForm.js';
+import { Link } from 'react-router-dom';
+import useContactForm from './useContactForm.js';
 import { COLORS, FONTS, CONTACT } from '../../constants.jsx';
 
 const SERVICE_OPTIONS = [
@@ -151,6 +152,18 @@ function ContactPage() {
     marginBottom: '1rem',
   };
 
+  const quoteNoteStyle = {
+    backgroundColor: '#eef5fc',
+    border: `1px solid ${COLORS.blue}`,
+    borderRadius: '6px',
+    padding: '1rem 1.25rem',
+    fontFamily: FONTS.body,
+    fontSize: '0.92rem',
+    color: '#333',
+    lineHeight: 1.55,
+    marginBottom: '1.5rem',
+  };
+
   return (
     <>
       <section style={heroStyle}>
@@ -181,6 +194,13 @@ function ContactPage() {
 
           <div>
             <h2 style={formHeadingStyle}>Send an Inquiry</h2>
+
+            <p style={quoteNoteStyle}>
+              <strong>Prefer a quote without filling out this form?</strong>{' '}
+              <Link to='/signup' style={infoLinkStyle}>Create a free account</Link> to get a
+              detailed, itemized quote online — no need to submit an inquiry and wait to hear back.
+            </p>
+
             {submitted && (
               <div style={successStyle}>
                 Thanks! Your email client should have opened with your message pre-filled.

@@ -4,17 +4,27 @@ import supabase from '../../utils/supabase.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { COLORS, FONTS } from '../../constants.jsx';
 
-const SPECIES    = ['Dog', 'Cat', 'Bird', 'Reptile', 'Fish', 'Small Mammal', 'Other'];
-const DIET_TYPES = ['Kibble', 'Wet Food', 'Raw', 'Mixed', 'Treat', 'Bone/Rawhide', 'Other'];
-const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const SPECIES     = ['Dog', 'Cat', 'Bird', 'Reptile', 'Fish', 'Small Mammal', 'Other'];
+const DIET_TYPES   = ['Kibble', 'Wet Food', 'Raw', 'Mixed', 'Treat', 'Bone/Rawhide', 'Other'];
+const DAYS         = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const SEVERITIES    = ['Mild', 'Moderate', 'Severe'];
+const DOC_TYPES     = [
+  { value: 'vaccination',    label: 'Vaccination Record' },
+  { value: 'medical_record', label: 'Medical Record' },
+  { value: 'insurance',      label: 'Insurance' },
+  { value: 'microchip',      label: 'Microchip Papers' },
+  { value: 'other',          label: 'Other' },
+];
 
-const BLANK_DIET_ENTRY = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
-const BLANK_WALK_ENTRY = { label: '', days: [], time: '', duration_minutes: '' };
-const BLANK_VACC_ENTRY = { vaccine: '', date_given: '', next_due: '', notes: '', record_url: '', record_name: '' };
+const BLANK_DIET_ENTRY    = { label: '', type: 'Kibble', time: '', amount: '', notes: '' };
+const BLANK_WALK_ENTRY    = { label: '', days: [], time: '', duration_minutes: '' };
+const BLANK_VACC_ENTRY    = { vaccine: '', date_given: '', next_due: '', notes: '', record_url: '', record_name: '' };
+const BLANK_ALLERGY_ENTRY = { allergen: '', severity: 'Mild', notes: '' };
 
 const BLANK = {
   name: '', species: 'Dog', breed: '', age_years: '', weight_lbs: '', notes: '',
-  free_fed: false, diet: [], walking_schedule: [], medications: [], vaccinations: [],
+  microchip_number: '', microchip_registry: '',
+  free_fed: false, diet: [], walking_schedule: [], medications: [], vaccinations: [], allergies: [],
 };
 
 /** Normalize: old single-object format → array; null/undefined → [] */
@@ -34,11 +44,14 @@ function petToForm(pet) {
     age_years:  pet.age_years  ?? '',
     weight_lbs: pet.weight_lbs ?? '',
     notes:      pet.notes      ?? '',
+    microchip_number:   pet.microchip_number   ?? '',
+    microchip_registry: pet.microchip_registry ?? '',
     free_fed:         freeFed,
     diet:             freeFed ? [] : toArr(rawDiet),
     walking_schedule: toArr(pet.walking_schedule),
     medications:      toArr(pet.medications),
     vaccinations:     toArr(pet.vaccinations),
+    allergies:        toArr(pet.allergies),
   };
 }
 
@@ -77,10 +90,13 @@ export default function PetManager({ onSelectTab }) {
       age_years:        form.age_years  ? parseFloat(form.age_years)  : null,
       weight_lbs:       form.weight_lbs ? parseFloat(form.weight_lbs) : null,
       notes:            form.notes      || null,
+      microchip_number:   form.microchip_number   || null,
+      microchip_registry: form.microchip_registry || null,
       diet:             form.free_fed ? { free_fed: true } : form.diet.length ? form.diet : null,
       walking_schedule: form.walking_schedule.length ? form.walking_schedule : null,
       medications:      form.medications,
       vaccinations:     form.vaccinations,
+      allergies:        form.allergies,
     };
     let err;
     if (editing === 'new') {
@@ -104,6 +120,8 @@ export default function PetManager({ onSelectTab }) {
 
   return (
     <div>
+      <UnsortedDocuments userId={user.id} pets={pets} />
+
       {pets.length === 0 && editing !== 'new' && <p style={st.empty}>No pets added yet.</p>}
 
       {pets.map(pet => (
@@ -115,7 +133,8 @@ export default function PetManager({ onSelectTab }) {
           ) : (
             <PetCard pet={pet} onEdit={() => startEdit(pet)}
               onDelete={() => handleDelete(pet.id)}
-              userId={user.id} onSelectTab={onSelectTab} />
+              userId={user.id} onSelectTab={onSelectTab}
+              onChanged={fetchPets} allPets={pets} />
           )}
         </div>
       ))}
@@ -134,13 +153,124 @@ export default function PetManager({ onSelectTab }) {
 
 PetManager.propTypes = { onSelectTab: PropTypes.func };
 
+// ─── UnsortedDocuments ───────────────────────────────────────────────────────
+// Documents filed via SMS/email intake that couldn't be confidently matched
+// to a pet. Customer assigns them to one or more pets here (checkboxes,
+// since one document can cover several pets — see pet_document_links).
+function UnsortedDocuments({ userId, pets }) {
+  const [docs, setDocs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState({});
+  const [assigning, setAssigning] = useState({});
+
+  useEffect(() => { fetchDocs(); }, [userId]); // eslint-disable-line
+
+  async function fetchDocs() {
+    setLoading(true);
+    const { data: allDocs } = await supabase.from('pet_documents').select('*')
+      .eq('customer_id', userId).order('uploaded_at', { ascending: false });
+    const ids = (allDocs || []).map(d => d.id);
+    let linkedIds = new Set();
+    if (ids.length > 0) {
+      const { data: links } = await supabase.from('pet_document_links').select('document_id').in('document_id', ids);
+      linkedIds = new Set((links || []).map(l => l.document_id));
+    }
+    setDocs((allDocs || []).filter(d => !linkedIds.has(d.id)));
+    setLoading(false);
+  }
+
+  function toggle(docId, petId) {
+    setSelected(prev => {
+      const cur = new Set(prev[docId] || []);
+      if (cur.has(petId)) cur.delete(petId); else cur.add(petId);
+      return { ...prev, [docId]: cur };
+    });
+  }
+
+  async function assign(docId) {
+    const petIds = Array.from(selected[docId] || []);
+    if (petIds.length === 0) return;
+    setAssigning(prev => ({ ...prev, [docId]: true }));
+    await supabase.from('pet_document_links').insert(petIds.map(pid => ({ document_id: docId, pet_id: pid })));
+    setAssigning(prev => ({ ...prev, [docId]: false }));
+    fetchDocs();
+  }
+
+  async function remove(docId) {
+    if (!window.confirm('Delete this document permanently?')) return;
+    await supabase.from('pet_documents').delete().eq('id', docId);
+    fetchDocs();
+  }
+
+  if (loading || docs.length === 0) return null;
+
+  return (
+    <div style={st.unsortedWrap}>
+      <h3 style={st.unsortedHead}>📥 Unsorted Documents ({docs.length})</h3>
+      <p style={st.dimText}>
+        These came in by text or email and need to be assigned to one or more pets.
+      </p>
+      {docs.map(doc => (
+        <div key={doc.id} style={st.unsortedRow}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <a href={doc.url} target='_blank' rel='noreferrer' style={st.unsortedLink}>
+              📄 {doc.title || 'Document'}
+            </a>
+            <span style={st.unsortedMeta}>
+              via {doc.source} · {new Date(doc.uploaded_at).toLocaleDateString()}
+            </span>
+            <div style={st.unsortedCheckRow}>
+              {pets.map(p => (
+                <label key={p.id} style={st.unsortedCheckLabel}>
+                  <input type='checkbox'
+                    checked={(selected[doc.id] || new Set()).has(p.id)}
+                    onChange={() => toggle(doc.id, p.id)} />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <button style={st.addItemBtn} disabled={assigning[doc.id] || !(selected[doc.id]?.size)}
+            onClick={() => assign(doc.id)}>
+            {assigning[doc.id] ? 'Assigning…' : 'Assign'}
+          </button>
+          <button style={st.removeBtn} onClick={() => remove(doc.id)}>Delete</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+UnsortedDocuments.propTypes = { userId: PropTypes.string.isRequired, pets: PropTypes.array.isRequired };
+
 // ─── PetCard ─────────────────────────────────────────────────────────────────
-function PetCard({ pet, onEdit, onDelete, userId, onSelectTab }) {
+function PetCard({ pet, onEdit, onDelete, userId, onSelectTab, onChanged, allPets }) {
   const [expanded, setExpanded] = useState(false);
-  const dietCount  = toArr(pet.diet).length;
-  const walkCount  = toArr(pet.walking_schedule).length;
-  const medCount   = toArr(pet.medications).length;
-  const vaccCount  = toArr(pet.vaccinations).length;
+  const [copyMsg, setCopyMsg]   = useState(null);
+  const dietCount     = toArr(pet.diet).length;
+  const walkCount     = toArr(pet.walking_schedule).length;
+  const medCount      = toArr(pet.medications).length;
+  const vaccCount     = toArr(pet.vaccinations).length;
+  const allergyCount  = toArr(pet.allergies).length;
+
+  async function handleShare() {
+    if (!pet.share_enabled) {
+      await supabase.from('pets').update({ share_enabled: true }).eq('id', pet.id);
+    }
+    const link = `https://tailwindspetcare.com/passport/${pet.share_token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopyMsg('Link copied!');
+    } catch (_) {
+      setCopyMsg(link);
+    }
+    setTimeout(() => setCopyMsg(null), 3500);
+    if (onChanged) onChanged();
+  }
+
+  async function handleStopSharing() {
+    await supabase.from('pets').update({ share_enabled: false }).eq('id', pet.id);
+    if (onChanged) onChanged();
+  }
 
   return (
     <div>
@@ -162,6 +292,7 @@ function PetCard({ pet, onEdit, onDelete, userId, onSelectTab }) {
           </span>
           {pet.notes && <span style={st.petNote}>{pet.notes}</span>}
           <div style={st.badgeRow}>
+            {allergyCount > 0 && <span style={st.badgeAlert}>⚠ {allergyCount} allerg{allergyCount > 1 ? 'ies' : 'y'}</span>}
             {dietCount  > 0 && <span style={st.badge}>{dietCount} feeding{dietCount > 1 ? 's' : ''}</span>}
             {walkCount  > 0 && <span style={st.badge}>{walkCount} walk{walkCount > 1 ? 's' : ''}</span>}
             {medCount   > 0 && <span style={st.badge}>{medCount} med{medCount > 1 ? 's' : ''}</span>}
@@ -179,11 +310,24 @@ function PetCard({ pet, onEdit, onDelete, userId, onSelectTab }) {
         </div>
       </div>
 
-      {/* Expanded: photos + visits */}
+      {/* Share Pet Passport */}
+      <div style={st.shareRow}>
+        <button style={st.shareBtn} onClick={handleShare}>🔗 Share Pet Passport</button>
+        {pet.share_enabled && (
+          <button style={st.stopShareBtn} onClick={handleStopSharing}>Stop sharing</button>
+        )}
+        {copyMsg && <span style={st.copyMsg}>{copyMsg}</span>}
+      </div>
+
+      {/* Expanded: photos + visits + documents + weight */}
       {expanded && (
         <div style={st.expandedWrap}>
           <PhotoAlbumShell petId={pet.id} />
           <PastVisits petId={pet.id} onSelectTab={onSelectTab} />
+          <div style={st.fullWidth}>
+            <DocumentsSection petId={pet.id} petName={pet.name} customerId={userId} allPets={allPets} />
+          </div>
+          <div style={st.fullWidth}><WeightLog petId={pet.id} currentWeight={pet.weight_lbs} /></div>
         </div>
       )}
     </div>
@@ -192,7 +336,8 @@ function PetCard({ pet, onEdit, onDelete, userId, onSelectTab }) {
 PetCard.propTypes = {
   pet: PropTypes.object.isRequired, onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired, userId: PropTypes.string.isRequired,
-  onSelectTab: PropTypes.func,
+  onSelectTab: PropTypes.func, onChanged: PropTypes.func,
+  allPets: PropTypes.array.isRequired,
 };
 
 // ─── PhotoAlbumShell ─────────────────────────────────────────────────────────
@@ -268,6 +413,231 @@ function PastVisits({ petId, onSelectTab }) {
 }
 PastVisits.propTypes = { petId: PropTypes.string.isRequired, onSelectTab: PropTypes.func };
 
+// ─── DocumentsSection ────────────────────────────────────────────────────────
+// General document vault: medical records, insurance, microchip papers, etc.
+// One document can be linked to multiple pets via pet_document_links (e.g. a
+// shared vet visit receipt or a household insurance policy).
+function DocumentsSection({ petId, petName, customerId, allPets }) {
+  const [docs, setDocs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState(null);
+  const [docType, setDocType]     = useState('medical_record');
+  const [title, setTitle]         = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
+  const [linkPicks, setLinkPicks] = useState({});
+
+  useEffect(() => { fetchDocs(); }, [petId]); // eslint-disable-line
+
+  async function fetchDocs() {
+    setLoading(true);
+    const { data: links } = await supabase
+      .from('pet_document_links')
+      .select('document_id, pet_documents(*)')
+      .eq('pet_id', petId);
+    const baseDocs = (links || []).map(l => l.pet_documents).filter(Boolean);
+    const ids = baseDocs.map(d => d.id);
+    const otherByDoc = {};
+    if (ids.length > 0) {
+      const { data: allLinks } = await supabase
+        .from('pet_document_links')
+        .select('document_id, pets(id, name)')
+        .in('document_id', ids);
+      (allLinks || []).forEach(l => {
+        if (!l.pets || l.pets.id === petId) return;
+        otherByDoc[l.document_id] = [...(otherByDoc[l.document_id] || []), l.pets.name];
+      });
+    }
+    baseDocs.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+    setDocs(baseDocs.map(d => ({ ...d, otherPets: otherByDoc[d.id] || [] })));
+    setLoading(false);
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setUploadErr(null);
+    const ext  = file.name.split('.').pop().toLowerCase();
+    const path = `${customerId}/doc_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('pet-documents').upload(path, file, { upsert: false, contentType: file.type });
+    if (upErr) { setUploadErr(upErr.message); setUploading(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from('pet-documents').getPublicUrl(path);
+    const { data: inserted, error: insErr } = await supabase.from('pet_documents').insert({
+      customer_id:  customerId,
+      doc_type:     docType,
+      title:        title || file.name,
+      storage_path: path,
+      url:          publicUrl,
+      expires_on:   expiresOn || null,
+      source:       'portal',
+    }).select('id').single();
+    if (!insErr && inserted) {
+      await supabase.from('pet_document_links').insert({ document_id: inserted.id, pet_id: petId });
+    }
+    setTitle(''); setExpiresOn(''); setUploading(false);
+    fetchDocs();
+  }
+
+  async function handleUnlink(docId) {
+    await supabase.from('pet_document_links').delete().eq('document_id', docId).eq('pet_id', petId);
+    fetchDocs();
+  }
+
+  async function handleDeletePermanently(docId) {
+    if (!window.confirm('Delete this document permanently for all linked pets?')) return;
+    await supabase.from('pet_documents').delete().eq('id', docId);
+    fetchDocs();
+  }
+
+  async function handleLinkAnother(docId) {
+    const otherPetId = linkPicks[docId];
+    if (!otherPetId) return;
+    await supabase.from('pet_document_links').insert({ document_id: docId, pet_id: otherPetId });
+    setLinkPicks(prev => ({ ...prev, [docId]: '' }));
+    fetchDocs();
+  }
+
+  function expiryLabel(doc) {
+    if (!doc.expires_on) return null;
+    const days = Math.round((new Date(doc.expires_on) - new Date()) / 86400000);
+    if (days < 0) return { text: `Expired ${doc.expires_on}`, color: COLORS.red };
+    if (days <= 30) return { text: `Expires ${doc.expires_on}`, color: COLORS.red };
+    return { text: `Expires ${doc.expires_on}`, color: '#888' };
+  }
+
+  return (
+    <div style={st.docsSection}>
+      <h4 style={st.sectionHead}>Documents</h4>
+      {loading ? <p style={st.dimText}>Loading…</p> : docs.length === 0 ? (
+        <p style={st.dimText}>No documents yet. Upload vet records, insurance cards, or microchip papers below.</p>
+      ) : (
+        <div style={st.docsList}>
+          {docs.map(doc => {
+            const exp = expiryLabel(doc);
+            const linkable = allPets.filter(p => p.id !== petId && !doc.otherPets.includes(p.name));
+            return (
+              <div key={doc.id} style={st.docRow}>
+                <a href={doc.url} target='_blank' rel='noreferrer' style={st.unsortedLink}>
+                  📄 {doc.title || 'Document'}
+                </a>
+                <span style={st.docTypeBadge}>
+                  {DOC_TYPES.find(d => d.value === doc.doc_type)?.label || 'Other'}
+                </span>
+                {exp && <span style={{ ...st.docExpiry, color: exp.color }}>{exp.text}</span>}
+                {doc.otherPets.length > 0 && (
+                  <span style={st.docSharedBadge}>Also: {doc.otherPets.join(', ')}</span>
+                )}
+                {linkable.length > 0 && (
+                  <>
+                    <select style={st.unsortedSelect} value={linkPicks[doc.id] || ''}
+                      onChange={e => setLinkPicks(prev => ({ ...prev, [doc.id]: e.target.value }))}>
+                      <option value=''>+ Link to another pet…</option>
+                      {linkable.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    {linkPicks[doc.id] && (
+                      <button style={st.addItemBtn} onClick={() => handleLinkAnother(doc.id)}>Link</button>
+                    )}
+                  </>
+                )}
+                <button style={st.removeBtn} onClick={() => handleUnlink(doc.id)}>
+                  Unlink from {petName}
+                </button>
+                <button style={st.removeBtn} onClick={() => handleDeletePermanently(doc.id)}>
+                  Delete permanently
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={st.docUploadRow}>
+        <select style={st.input} value={docType} onChange={e => setDocType(e.target.value)}>
+          {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <input style={st.input} type='text' placeholder='Title (optional)'
+          value={title} onChange={e => setTitle(e.target.value)} />
+        <input style={st.input} type='date' placeholder='Expires (optional)'
+          value={expiresOn} onChange={e => setExpiresOn(e.target.value)} />
+        <label style={st.uploadBtn}>
+          {uploading ? 'Uploading…' : '📎 Upload File'}
+          <input type='file' accept='.pdf,.doc,.docx,image/*'
+            onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} />
+        </label>
+      </div>
+      {uploadErr && <p style={st.formErr}>{uploadErr}</p>}
+    </div>
+  );
+}
+DocumentsSection.propTypes = {
+  petId: PropTypes.string.isRequired, petName: PropTypes.string.isRequired,
+  customerId: PropTypes.string.isRequired, allPets: PropTypes.array.isRequired,
+};
+
+// ─── WeightLog ───────────────────────────────────────────────────────────────
+function WeightLog({ petId, currentWeight }) {
+  const [logs, setLogs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [weight, setWeight]   = useState('');
+  const [date, setDate]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving]   = useState(false);
+
+  useEffect(() => { fetchLogs(); }, [petId]); // eslint-disable-line
+
+  function fetchLogs() {
+    setLoading(true);
+    supabase.from('pet_weight_logs').select('*').eq('pet_id', petId)
+      .order('recorded_at', { ascending: false })
+      .then(({ data }) => { setLogs(data || []); setLoading(false); });
+  }
+
+  async function handleAdd() {
+    if (!weight) return;
+    setSaving(true);
+    await supabase.from('pet_weight_logs').insert({
+      pet_id: petId, weight_lbs: parseFloat(weight), recorded_at: date,
+    });
+    await supabase.from('pets').update({ weight_lbs: parseFloat(weight) }).eq('id', petId);
+    setWeight(''); setSaving(false);
+    fetchLogs();
+  }
+
+  async function handleDelete(logId) {
+    await supabase.from('pet_weight_logs').delete().eq('id', logId);
+    fetchLogs();
+  }
+
+  return (
+    <div style={st.weightSection}>
+      <h4 style={st.sectionHead}>Weight History{currentWeight ? ` · currently ${currentWeight} lbs` : ''}</h4>
+      {loading ? <p style={st.dimText}>Loading…</p> : logs.length === 0 ? (
+        <p style={st.dimText}>No weight entries logged yet.</p>
+      ) : (
+        <div style={st.weightList}>
+          {logs.map(l => (
+            <div key={l.id} style={st.weightRow}>
+              <span style={st.weightDate}>{l.recorded_at}</span>
+              <span style={st.weightValue}>{l.weight_lbs} lbs</span>
+              {l.note && <span style={st.weightNote}>{l.note}</span>}
+              <button style={st.removeBtn} onClick={() => handleDelete(l.id)}>Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={st.weightAddRow}>
+        <input style={st.input} type='number' min='0' step='0.1' placeholder='Weight (lbs)'
+          value={weight} onChange={e => setWeight(e.target.value)} />
+        <input style={st.input} type='date' value={date} onChange={e => setDate(e.target.value)} />
+        <button style={st.addItemBtn} onClick={handleAdd} disabled={saving || !weight}>
+          {saving ? 'Saving…' : '+ Log Weight'}
+        </button>
+      </div>
+    </div>
+  );
+}
+WeightLog.propTypes = { petId: PropTypes.string.isRequired, currentWeight: PropTypes.number };
+
 function statusColor(s) {
   return s === 'completed' ? '#2a7a3b' : s === 'cancelled' ? COLORS.red
     : s === 'confirmed' ? COLORS.blue : '#888';
@@ -283,6 +653,7 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   const [walkOpen, setWalkOpen]       = useState(toArr(initial?.walking_schedule).length > 0);
   const [medsOpen, setMedsOpen]       = useState(toArr(initial?.medications).length > 0);
   const [vaccsOpen, setVaccsOpen]     = useState(toArr(initial?.vaccinations).length > 0);
+  const [allergiesOpen, setAllergiesOpen] = useState(toArr(initial?.allergies).length > 0);
   const [freeFed, setFreeFed]         = useState(initial?.diet?.free_fed === true || false);
   const [vaccUploading, setVaccUploading]       = useState({});
   const [vaccUploadErr, setVaccUploadErr]       = useState({});
@@ -317,6 +688,11 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
   function addVacc()             { setVaccsOpen(true); setForm(p => ({ ...p, vaccinations: [...p.vaccinations, { ...BLANK_VACC_ENTRY }] })); }
   function removeVacc(i)         { setForm(p => ({ ...p, vaccinations: p.vaccinations.filter((_, x) => x !== i) })); }
   function setVacc(i, field, v)  { setForm(p => { const v2 = [...p.vaccinations]; v2[i] = { ...v2[i], [field]: v }; return { ...p, vaccinations: v2 }; }); }
+
+  // ── Allergies ──────────────────────────────────────────────────────────────
+  function addAllergy()            { setAllergiesOpen(true); setForm(p => ({ ...p, allergies: [...p.allergies, { ...BLANK_ALLERGY_ENTRY }] })); }
+  function removeAllergy(i)        { setForm(p => ({ ...p, allergies: p.allergies.filter((_, x) => x !== i) })); }
+  function setAllergy(i, field, v) { setForm(p => { const a = [...p.allergies]; a[i] = { ...a[i], [field]: v }; return { ...p, allergies: a }; }); }
 
   // ── Vaccination record upload ────────────────────────────────────────────
   async function handleVaccUpload(e, i) {
@@ -424,14 +800,60 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
         <label style={st.label}>Age (years)
           <input style={st.input} type='number' min='0' step='0.5' value={form.age_years} onChange={e => set('age_years', e.target.value)} />
         </label>
+        <label style={st.label}>Microchip Number
+          <input style={st.input} type='text' value={form.microchip_number}
+            onChange={e => set('microchip_number', e.target.value)} placeholder='985121012345678' />
+        </label>
+        <label style={st.label}>Microchip Registry
+          <input style={st.input} type='text' value={form.microchip_registry}
+            onChange={e => set('microchip_registry', e.target.value)} placeholder='AKC Reunite, HomeAgain…' />
+        </label>
         <label style={{ ...st.label, gridColumn: '1 / -1' }}>Notes
           <input style={st.input} type='text' value={form.notes} onChange={e => set('notes', e.target.value)}
-            placeholder='Allergies, behavioral notes…' />
+            placeholder='Behavioral notes, general care instructions…' />
         </label>
       </div>
 
       {/* Optional sections */}
       <div style={st.optWrap}>
+
+        {/* Allergies */}
+        <div style={st.optSection}>
+          <div style={st.optHeaderRow}>
+            <button style={st.optToggle} onClick={() => setAllergiesOpen(o => !o)}>
+              {allergiesOpen ? '▾' : '▸'} Allergies
+              {form.allergies.length > 0 && <span style={st.badgeAlert}>{form.allergies.length}</span>}
+            </button>
+            <button style={st.addItemBtn} onClick={addAllergy}>+ Add Allergy</button>
+          </div>
+          {allergiesOpen && (
+            <div>
+              {form.allergies.map((a, i) => (
+                <div key={i} style={st.listItem}>
+                  <div style={st.row3}>
+                    <label style={st.label}>Allergen
+                      <input style={st.input} type='text' value={a.allergen}
+                        onChange={e => setAllergy(i, 'allergen', e.target.value)} placeholder='Chicken, bee stings…' />
+                    </label>
+                    <label style={st.label}>Severity
+                      <select style={st.input} value={a.severity} onChange={e => setAllergy(i, 'severity', e.target.value)}>
+                        {SEVERITIES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </label>
+                    <label style={st.label}>Notes
+                      <input style={st.input} type='text' value={a.notes ?? ''}
+                        onChange={e => setAllergy(i, 'notes', e.target.value)} placeholder='Reaction, treatment…' />
+                    </label>
+                  </div>
+                  <button style={st.removeBtn} onClick={() => removeAllergy(i)}>Remove</button>
+                </div>
+              ))}
+              {form.allergies.length === 0 && (
+                <p style={st.dimText}>No allergies on file. This is shown to your sitter for safety.</p>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Feeding Schedule */}
         <div style={st.optSection}>
@@ -727,6 +1149,11 @@ const st = {
     fontFamily: FONTS.body, fontSize: '0.72rem', borderRadius: '10px',
     padding: '0.1rem 0.5rem',
   },
+  badgeAlert: {
+    display: 'inline-block', background: '#fdeceb', color: COLORS.red,
+    fontFamily: FONTS.body, fontSize: '0.72rem', fontWeight: '700', borderRadius: '10px',
+    padding: '0.1rem 0.5rem',
+  },
   petActions: { display: 'flex', gap: '0.4rem', marginLeft: 'auto', flexShrink: 0 },
   editBtn: {
     padding: '0.3rem 0.65rem', background: COLORS.white, border: `1px solid ${COLORS.blue}`,
@@ -744,10 +1171,21 @@ const st = {
     marginTop: '0.5rem', background: 'none', border: 'none', color: COLORS.blue,
     fontFamily: FONTS.body, fontSize: '0.95rem', cursor: 'pointer', padding: '0.5rem 0',
   },
+  shareRow: { display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.6rem', flexWrap: 'wrap' },
+  shareBtn: {
+    padding: '0.3rem 0.65rem', background: COLORS.white, border: `1px solid ${COLORS.blue}`,
+    color: COLORS.blue, borderRadius: '6px', cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.8rem',
+  },
+  stopShareBtn: {
+    background: 'none', border: 'none', color: '#999', cursor: 'pointer',
+    fontFamily: FONTS.body, fontSize: '0.78rem', textDecoration: 'underline',
+  },
+  copyMsg: { fontFamily: FONTS.body, fontSize: '0.78rem', color: '#2a7a3b' },
   expandedWrap: {
     marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #eef3fa',
     display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem',
   },
+  fullWidth: { gridColumn: '1 / -1' },
   albumSection: {},
   visitsSection: {},
   sectionHead: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '0.9rem', marginBottom: '0.5rem' },
@@ -762,6 +1200,52 @@ const st = {
     background: 'none', border: 'none', color: COLORS.blue, cursor: 'pointer',
     fontFamily: FONTS.body, fontSize: '0.78rem', padding: 0, flexShrink: 0,
   },
+  // Unsorted documents
+  unsortedWrap: {
+    border: `1px solid ${COLORS.blue}`, borderRadius: '10px', padding: '1rem 1.25rem',
+    marginBottom: '1rem', background: '#f4f9ff',
+  },
+  unsortedHead: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', marginBottom: '0.25rem' },
+  unsortedRow: {
+    display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0',
+    borderTop: '1px solid #dde8f4', flexWrap: 'wrap',
+  },
+  unsortedLink: { fontFamily: FONTS.body, fontSize: '0.88rem', color: COLORS.blue, textDecoration: 'none' },
+  unsortedMeta: { display: 'block', fontFamily: FONTS.body, fontSize: '0.75rem', color: '#999' },
+  unsortedSelect: {
+    padding: '0.35rem 0.5rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`,
+    fontFamily: FONTS.body, fontSize: '0.82rem',
+  },
+  unsortedCheckRow: { display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.35rem' },
+  unsortedCheckLabel: {
+    display: 'flex', alignItems: 'center', gap: '0.25rem',
+    fontFamily: FONTS.body, fontSize: '0.8rem', color: '#555',
+  },
+  // Documents section (per pet)
+  docsSection: { marginTop: '0.5rem' },
+  docsList: { marginBottom: '0.5rem' },
+  docRow: {
+    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0',
+    borderBottom: '1px solid #f0f4fa', flexWrap: 'wrap',
+  },
+  docTypeBadge: {
+    fontFamily: FONTS.body, fontSize: '0.7rem', color: COLORS.lightBlue,
+    border: `1px solid ${COLORS.lightBlue}`, borderRadius: '8px', padding: '0.05rem 0.4rem',
+  },
+  docExpiry: { fontFamily: FONTS.body, fontSize: '0.72rem' },
+  docSharedBadge: { fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue, fontStyle: 'italic' },
+  docUploadRow: { display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' },
+  // Weight log
+  weightSection: { marginTop: '0.5rem' },
+  weightList: { marginBottom: '0.5rem' },
+  weightRow: {
+    display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.3rem 0',
+    borderBottom: '1px solid #f0f4fa', fontFamily: FONTS.body, fontSize: '0.82rem',
+  },
+  weightDate:  { color: '#555', minWidth: '90px' },
+  weightValue: { color: COLORS.black, fontWeight: '600' },
+  weightNote:  { color: '#888', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  weightAddRow: { display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.4rem' },
   // Form styles
   formHead: { fontFamily: FONTS.header, color: COLORS.blue, fontSize: '1rem', marginBottom: '0.75rem' },
   formErr:  { fontFamily: FONTS.body, color: COLORS.red, fontSize: '0.9rem', marginBottom: '0.5rem' },

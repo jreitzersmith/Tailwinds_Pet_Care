@@ -199,7 +199,7 @@ function AboutPage() {
           </p>
           <div style={insuranceBoxStyle}>
             <div style={{ fontFamily: FONTS.header, fontWeight: '700', marginBottom: '0.25rem' }}>
-              Pet Sitters Associates — Policy 3ED4170
+              Pet Sitters Associates
             </div>
             <div style={{ fontFamily: FONTS.body, fontSize: '0.85rem', color: '#777', marginBottom: '0.75rem' }}>
               Underwritten by Evanston Insurance Company &middot; Effective June 19, 2026

@@ -74,6 +74,7 @@ function ServicesPage() {
                   key={service.name}
                   name={service.name}
                   description={service.description}
+                  gallery={service.gallery}
                 />
               ))}
             </div>
