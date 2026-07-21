@@ -10,11 +10,12 @@ Read `CLAUDE.md` at session start. Read `Claude_Prompts/Code_Standards.md` befor
 
 At the start of every session, before any planning or execution:
 
-1. Read `Claude_Prompts/Backlog.md`.
-2. Read `Claude_Prompts/Changelog.md` (tail is sufficient if long).
-3. Read `CLAUDE.md`.
-4. Read any `feedback_*.md` files listed in the memory index.
-5. Check for `vite.config.js.timestamp-*.mjs` in the project root. If 5 or more exist, delete them:
+1. Check whether `mcp__remote-devices__desktop-commander__*` tools are available (the Claude desktop app is connected this session). If so, **prefer them for all git/build/deploy operations this session** — they run natively on the user's Windows machine with real internet access, avoiding the FUSE mount entirely. See `Claude_Prompts/File_Editing_Rules.md`'s "Preferred Method" section. Only fall back to the FUSE-bridge workarounds elsewhere in that document if desktop-commander isn't available.
+2. Read `Claude_Prompts/Backlog.md`.
+3. Read `Claude_Prompts/Changelog.md` (tail is sufficient if long).
+4. Read `CLAUDE.md`.
+5. Read any `feedback_*.md` files listed in the memory index.
+6. Check for `vite.config.js.timestamp-*.mjs` in the project root. If 5 or more exist, delete them:
    ```
    Remove-Item "C:\Programming_Projects\Tailswinds_Pet_Care\vite.config.js.timestamp-*.mjs" -Force
    ```
@@ -71,10 +72,12 @@ Apply changes in dependency order. For each item:
    ```
    If SYNTAX ERROR: stop and fix before building.
 3. **Run the Vite build:**
-   ```bash
-   npx vite build --outDir /tmp/tailwinds-build --emptyOutDir
-   ```
-   **Important:** Always build to `/tmp/` — never the FUSE mount path (EPERM on unlink).
+   - **With desktop-commander (preferred):** build straight to the normal output dir — `npm run build` (outputs to `dist/`). No `/tmp` workaround needed; there's no FUSE mount in the way when running natively.
+   - **FUSE-bridge fallback only** (desktop-commander unavailable):
+     ```bash
+     npx vite build --outDir /tmp/tailwinds-build --emptyOutDir
+     ```
+     **Important:** in this fallback mode, always build to `/tmp/` — never the FUSE mount path (EPERM on unlink).
 4. Do not proceed to the next item until the build is green.
 5. After all items: `npx vitest run`. Do not commit until both build and tests pass.
 
@@ -121,6 +124,8 @@ After all changes, provide a specific manual testing checklist. Always render as
 
 ## Phase 7 — Commit
 
+**With desktop-commander (preferred):** run `git add` / `git commit` / `git push` directly via `start_process` (native — no FUSE `.git/index.lock` EPERM issue). The GitHub-API-PUT workaround in `File_Editing_Rules.md` is only needed as a FUSE-bridge fallback when desktop-commander isn't available.
+
 Use `mcp__git__git_commit`:
 
 ```
@@ -138,7 +143,7 @@ After committing:
 4. Close issue via `mcp__github__update_issue` with `state: closed`.
 5. Confirm Last used numbers line in `Backlog.md` is current.
 6. Move Skip items to Deferred Testing Scenarios in `Backlog.md`.
-7. Push: `git -C "C:\Programming_Projects\Tailswinds_Pet_Care" push origin main`
+7. Push (if not already pushed in the commit step above): `git -C "C:\Programming_Projects\Tailswinds_Pet_Care" push origin main`
 
 ---
 

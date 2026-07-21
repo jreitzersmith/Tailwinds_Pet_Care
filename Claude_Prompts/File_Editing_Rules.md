@@ -4,6 +4,23 @@
 
 ---
 
+## Preferred Method (2026-07-21): `desktop-commander`, not the FUSE bridge
+
+If the `mcp__remote-devices__desktop-commander__*` tools are available (the Claude desktop app is connected), **use them instead of everything below.** They run real processes directly on the Windows machine against the actual disk — not through the virtiofs FUSE mount that `device_bash` and the Cowork Edit/Write tools go through. Confirmed working: `git fetch`/`add`/`commit`/`merge`/`push`, `npm run build`, and `ssh`/`scp` to the Lightsail server (real outbound internet — unlike `device_bash`, which has none, and unlike the cloud sandbox's Bash tool, which is network-allowlisted and times out on port 22 to arbitrary IPs like the Lightsail box).
+
+This eliminates essentially every workaround in this document:
+- No stale page-cache reads → no need for the Read-tool-only rule or the write-to-`/tmp`-then-rename dance. Use `desktop-commander__read_file` / `write_file` / `edit_block` directly on the real path, or `start_process` running `git`/`npm`/PowerShell.
+- No `/tmp` ownership carryover between sessions (there's no `/tmp` involved at all — it's native Windows).
+- No EPERM on `.git/index.lock` → `git commit` and `git push` work directly. The GitHub-API-PUT workaround is no longer needed when desktop-commander is available.
+- No stale build-output directory → build straight to the project's normal `dist/` with `npm run build`, no fresh-`/tmp`-dir-per-session needed.
+- No rsync-skips-`index.html` issue → that was specifically the cloud sandbox reading a stale FUSE-cached copy to compute the rsync checksum. A native `npm run build` + `scp` from the real `dist/` doesn't have this problem.
+
+Only fall back to the rules below when desktop-commander isn't available — e.g. no Claude desktop app connected this session, or you're working purely from the cloud sandbox side via `device_bash`/the connected-folder bridge.
+
+Practical pattern: `mcp__remote-devices__desktop-commander__start_process` with `command: "powershell -Command \"cd 'C:\\Programming_Projects\\Tailswinds_Pet_Care'; <your commands>\""`. For a commit message with newlines, write it to a scratch file first (e.g. `write_file` to `.git\COMMIT_EDITMSG_SCRATCH`), then `git commit -F .git\COMMIT_EDITMSG_SCRATCH`, then delete the scratch file — avoids PowerShell multi-line quoting pain.
+
+---
+
 ## Root Cause
 
 The project folder is mounted via **virtiofs FUSE**. The kernel page cache does not invalidate when Windows-side processes (git, PowerShell, VS Code) modify files. This causes three distinct failure modes:
@@ -111,6 +128,8 @@ chmod 600 /tmp/tw_deploy.pem
 
 Do not try to read `/tmp/deploy_key.pem` left over from a prior session — it is owned by `nobody:nogroup` and will return `Permission denied`.
 
+**Note (2026-07-21):** the cloud sandbox's own Bash tool cannot SSH to the Lightsail box at all — outbound port 22 to arbitrary IPs times out (network allowlist), confirmed by testing. Plain HTTPS from the cloud sandbox works fine for read-only checks (curl to tailwindspetcare.com). For actual ssh/scp, use desktop-commander (see "Preferred Method" above) — it has real outbound access from the user's machine.
+
 ---
 
 ## Git — Commit and Push
@@ -144,11 +163,13 @@ def github_put(api_path, local_path, sha=None):
 
 Workflow: get SHA for each changed file → call `github_put` for each → done.
 
+**This whole section is a FUSE-bridge fallback.** With desktop-commander available, just run `git add` / `git commit` / `git push` natively — no EPERM, no per-file API calls needed. Reserve the GitHub API approach for sessions where desktop-commander isn't connected.
+
 ---
 
 ## Stale Git Lock Files
 
-If any git command fails with a lock error, the lock file is a FUSE artifact. `rm` will also fail. Use `os.rename()`:
+If any git command fails with a lock error, the lock file is a FUSE artifact. `rm` will also fail via `device_bash`/the FUSE bridge. Use `os.rename()`:
 
 ```python
 import os, glob
@@ -161,9 +182,19 @@ for lock in glob.glob(git_dir + '/**/*.lock', recursive=True) + glob.glob(git_di
         print(f"Failed: {lock} — {e}")
 ```
 
+**Important (2026-07-21):** the `.lock.bak` files this creates are never actually removed, and they pile up. A stray `refs/remotes/origin/main.lock.bak` and `.git/index.lock(.bak)` left over from this exact rename trick (dated ~7/5) later broke `git fetch` outright (`fatal: bad object refs/remotes/origin/main.lock.bak`) and `git add` (`Unable to create .git/index.lock: File exists`) in a later session. **If desktop-commander is available, delete them for real instead:**
+
+```powershell
+Get-ChildItem .git -Filter '*.lock*' -Recurse -Force | Remove-Item -Force
+```
+
+Only use the rename-to-`.bak` trick when working through the FUSE bridge where `rm`/`Remove-Item` genuinely can't delete the file — and if you do, periodically clean up the accumulated `.bak` files from a desktop-commander session so they don't cause this failure again.
+
 ---
 
 ## Summary Cheatsheet
+
+**Everything in this table is the FUSE-bridge fallback.** If desktop-commander is available this session, use it directly (native git/build/ssh — see "Preferred Method" above) instead of the methods below.
 
 | Task | Method |
 |---|---|
@@ -175,4 +206,4 @@ for lock in glob.glob(git_dir + '/**/*.lock', recursive=True) + glob.glob(git_di
 | Deploy index.html | scp separately |
 | SSH key | Copy from SecurityKeys each session → `/tmp/tw_deploy.pem` |
 | Git push | GitHub API (`PUT /contents/<path>`), not `git commit` |
-| Stuck lock files | `os.rename(lock, lock + '.bak')` — never `rm` |
+| Stuck lock files | `os.rename(lock, lock + '.bak')` — never `rm` (and clean up the `.bak` files periodically) |
