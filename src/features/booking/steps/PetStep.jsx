@@ -265,7 +265,7 @@ export default function PetStep({ booking }) {
       {addingNew && (
         <div style={styles.newPetForm}>
           <h3 style={styles.subTitle}>New Pet</h3>
-          <div style={styles.row2}>
+          <div style={styles.row2} className='petstep-row2'>
             <div style={styles.fieldGroup}>
               <label style={styles.label}>Name *</label>
               <input style={styles.input} value={form.newPet?.name || ''} onChange={e => handleNewPetField('name', e.target.value)} />
@@ -277,7 +277,7 @@ export default function PetStep({ booking }) {
               </select>
             </div>
           </div>
-          <div style={styles.row2}>
+          <div style={styles.row2} className='petstep-row2'>
             <div style={styles.fieldGroup}>
               <label style={styles.label}>Breed</label>
               <input style={styles.input} value={form.newPet?.breed || ''} onChange={e => handleNewPetField('breed', e.target.value)} />
@@ -287,7 +287,7 @@ export default function PetStep({ booking }) {
               <input style={styles.input} type="number" min="0" value={form.newPet?.age_years || ''} onChange={e => handleNewPetField('age_years', e.target.value)} />
             </div>
           </div>
-          <div style={styles.row2}>
+          <div style={styles.row2} className='petstep-row2'>
             <div style={styles.fieldGroup}>
               <label style={styles.label}>Weight (lbs)</label>
               <input style={styles.input} type="number" min="0" value={form.newPet?.weight_lbs || ''} onChange={e => handleNewPetField('weight_lbs', e.target.value)} />
@@ -338,7 +338,7 @@ export default function PetStep({ booking }) {
         <div style={styles.overlay} onClick={closeEdit}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
             <h3 style={styles.modalTitle}>Edit {editingPet.name}</h3>
-            <div style={styles.row2}>
+            <div style={styles.row2} className='petstep-row2'>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Name *</label>
                 <input style={styles.input} value={editFields.name || ''} onChange={e => setEdit('name', e.target.value)} />
@@ -350,7 +350,7 @@ export default function PetStep({ booking }) {
                 </select>
               </div>
             </div>
-            <div style={styles.row2}>
+            <div style={styles.row2} className='petstep-row2'>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Breed</label>
                 <input style={styles.input} value={editFields.breed || ''} onChange={e => setEdit('breed', e.target.value)} />
@@ -360,7 +360,7 @@ export default function PetStep({ booking }) {
                 <input style={styles.input} type="number" min="0" value={editFields.age_years ?? ''} onChange={e => setEdit('age_years', e.target.value)} />
               </div>
             </div>
-            <div style={styles.row2}>
+            <div style={styles.row2} className='petstep-row2'>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Weight (lbs)</label>
                 <input style={styles.input} type="number" min="0" value={editFields.weight_lbs ?? ''} onChange={e => setEdit('weight_lbs', e.target.value)} />
@@ -430,7 +430,7 @@ function DietEntry({ entry, idx, onChange, onRemove }) {
         <span style={styles.entryNum}>#{idx + 1}</span>
         <button style={styles.removeBtn} onClick={onRemove}>✕</button>
       </div>
-      <div style={styles.row2}>
+      <div style={styles.row2} className='petstep-row2'>
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Label</label>
           <input style={styles.input} placeholder="e.g. Morning Kibble" value={entry.label || ''} onChange={e => onChange('label', e.target.value)} />
@@ -442,7 +442,7 @@ function DietEntry({ entry, idx, onChange, onRemove }) {
           </select>
         </div>
       </div>
-      <div style={styles.row2}>
+      <div style={styles.row2} className='petstep-row2'>
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Time</label>
           <input style={styles.input} type="time" value={entry.time || ''} onChange={e => onChange('time', e.target.value)} />
@@ -471,7 +471,7 @@ function WalkEntry({ entry, idx, onChange, onRemove, onToggleDay }) {
         <label style={styles.label}>Label</label>
         <input style={styles.input} placeholder="e.g. Morning Walk" value={entry.label || ''} onChange={e => onChange('label', e.target.value)} />
       </div>
-      <div style={styles.row2}>
+      <div style={styles.row2} className='petstep-row2'>
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Time</label>
           <input style={styles.input} type="time" value={entry.time || ''} onChange={e => onChange('time', e.target.value)} />
@@ -504,7 +504,7 @@ function MedEntry({ entry, idx, onChange, onRemove }) {
         <span style={styles.entryNum}>#{idx + 1}</span>
         <button style={styles.removeBtn} onClick={onRemove}>✕</button>
       </div>
-      <div style={styles.row2}>
+      <div style={styles.row2} className='petstep-row2'>
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Medication Name</label>
           <input style={styles.input} placeholder="e.g. Heartgard" value={entry.name || ''} onChange={e => onChange('name', e.target.value)} />
@@ -521,7 +521,7 @@ function MedEntry({ entry, idx, onChange, onRemove }) {
         </select>
       </div>
       {(freq === 'Once Daily' || freq === 'Twice Daily') && (
-        <div style={styles.row2}>
+        <div style={styles.row2} className='petstep-row2'>
           <div style={styles.fieldGroup}>
             <label style={styles.label}>{freq === 'Twice Daily' ? 'Time 1' : 'Time'}</label>
             <input style={styles.input} type="time" value={entry.time1 || ''} onChange={e => onChange('time1', e.target.value)} />

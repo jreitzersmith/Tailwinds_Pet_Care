@@ -154,12 +154,14 @@ a {
   }
 }
 
-/* -- Portal: responsive grids (pet manager + account settings) - */
+/* -- Portal + booking: responsive form grids -------------------- */
 @media (max-width: 480px) {
   .pm-expanded-wrap,
   .pm-row3,
   .pm-form-grid,
-  .acct-grid {
+  .acct-grid,
+  .guided-row2,
+  .petstep-row2 {
     grid-template-columns: 1fr !important;
   }
 }

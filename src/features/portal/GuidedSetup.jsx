@@ -127,7 +127,7 @@ export default function GuidedSetup({ onComplete }) {
                 placeholder='Buddy'
               />
             </label>
-            <div style={s.row2}>
+            <div style={s.row2} className='guided-row2'>
               <label style={s.label}>Species
                 <select style={s.input} value={pet.species}
                   onChange={e => setPet(p => ({ ...p, species: e.target.value }))}>
@@ -204,12 +204,16 @@ const s = {
   label: {
     display: 'flex', flexDirection: 'column', gap: '0.3rem',
     fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, marginBottom: '0.75rem',
+    minWidth: 0,
   },
   input: {
     padding: '0.55rem 0.75rem', borderRadius: '6px',
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
-    outline: 'none', fontFamily: FONTS.body,
+    outline: 'none', fontFamily: FONTS.body, width: '100%', minWidth: 0, boxSizing: 'border-box',
   },
+  // minWidth: 0 above overrides the browser default (min-width: auto) that grid items get —
+  // without it, a <select>/<input> refuses to shrink below its content's intrinsic width and
+  // overflows a narrow grid column on phone screens instead of scrolling/wrapping inside it.
   row2:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' },
   btnRow:  { display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' },
   primaryBtn: {
