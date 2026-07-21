@@ -8,7 +8,7 @@ Delete a row when its work order is committed. Append new items at the bottom of
 ## Business
 
 | ID    | Priority | Title                                 | Notes                                                                                     |
-|-------|----------|---------------------------------------|-------------------------------------------------------------------------------------------|
+|-------|----------|----------------------------------------|--------------------------------------------------------------------------------------------|
 | BIZ-1 | P1       | Confirm SoS filing "Processed"        | SOSDirect doc 1598115070003 shows "Received" — verify it advanced to "Processed"          |
 | BIZ-2 | P1       | Open business bank account            | EIN 42-3224280 ready; use exact legal name "Tailwinds Pet Care, L.L.C"                   |
 | BIZ-3 | P2       | File annual Texas Franchise Tax report| Informational only; $0 owed below ~$2.47M; first report due May 2027                     |
@@ -29,7 +29,7 @@ Delete a row when its work order is committed. Append new items at the bottom of
 ## Website — Phase 1 (Marketing)
 
 | ID   | Priority | Title                                  | Notes                                                                                    |
-|------|----------|----------------------------------------|------------------------------------------------------------------------------------------|
+|------|----------|------------------------------------------|--------------------------------------------------------------------------------------------|
 | FR-4 | P1       | HomePage: add sections below Hero      | Currently only renders HeroSection — add services preview and trust/social-proof section |
 | FR-5 | P2       | Contact form: confirm submission target| useContactForm.js exists; verify submissions reach petsitter@tailwindspetcare.com         |
 | FR-6 | P2       | Verify ServiceArea map in production   | Google Maps API key must be set in server .env; test zone lookup end-to-end              |
@@ -39,17 +39,29 @@ Delete a row when its work order is committed. Append new items at the bottom of
 ## Website — Phase 2 (Auth / Booking / Portal)
 
 | ID   | Priority | Title                                  | Notes                                                                                    |
-|------|----------|----------------------------------------|------------------------------------------------------------------------------------------|
+|------|----------|------------------------------------------|--------------------------------------------------------------------------------------------|
 | FR-7 | P1       | Booking flow smoke test                | Login → /book → all 4 steps → confirm write to Supabase                                  |
 | FR-8 | P1       | Portal smoke test                      | PortalPage, BookingsList, PetManager — test against live Supabase                        |
 | FR-9 | P1       | FR#17-21 smoke test                    | Account tab, GuidedSetup, enhanced pet form, tutorial overlay (?tutorial=true)              |
 
 ---
 
+## Website — Mobile Responsiveness
+
+**GitHub Issue:** [#1](https://github.com/jreitzersmith/Tailwinds_Pet_Care/issues/1) — full findings in `Claude_Prompts/WorkOrder_2026-07-21.md`. Codebase has exactly one CSS breakpoint sitewide (700px, index.css); nearly everything else is inline styles with no responsive treatment.
+
+| ID   | Priority | Title                                                  | Notes                                                                                                    |
+|------|----------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| MR-A | P1       | WO-A — Critical nav/booking mobile blockers (MR-1–MR-8)  | TutorialOverlay covers Continue/Confirm buttons; ServiceStep checkboxes ~15px; PortalPage tab bar overflows; PetManager grids unusable at phone widths; Nav hamburger/link tap targets; InvoicesList table no overflow wrapper |
+| MR-B | P2       | WO-B — Portal & forms mobile fixes (MR-9, 10, 16, 17, 19, 21, 22, 23) | AboutPage/ContactPage grids, PetStep/AccountSettings/GuidedSetup layout, auth OAuth button sizing            |
+| MR-C | P3       | WO-C — Polish + admin mobile fixes (MR-11–15, 18, 20, 24–27) | Map/logo sizing, tap-target padding across Footer/ServiceCard/PayNowButton/PetManager day buttons, admin table/grid scroll wrappers |
+
+---
+
 ## Code Quality
 
 | ID   | Priority | Title                                  | Notes                                                                                    |
-|------|----------|-----------------------------------------|------------------------------------------------------------------------------------------|
+|------|----------|------------------------------------------|---------------------------------------------------------------------------------------------|
 | CQ-1 | P2       | PropTypes audit — all components       | Code_Standards requires PropTypes on every component; grep for missing declarations      |
 | CQ-2 | P2       | Add Error Boundaries to major sections | Wrap BookingPage, PortalPage, ServiceAreaPage at minimum                                 |
 | CQ-3 | P2       | Unit tests for custom hooks            | useBookingForm, useContactForm, useZoneLookup, useLoadGoogleMaps                         |
@@ -60,9 +72,8 @@ Delete a row when its work order is committed. Append new items at the bottom of
 ## Phase 3 (Deferred)
 
 | ID   | Priority | Title                                  | Notes                                                                                    |
-|------|----------|-----------------------------------------|------------------------------------------------------------------------------------------|
+|------|----------|------------------------------------------|---------------------------------------------------------------------------------------------|
 | FR-9 | P2       | Payments: Square + PayPal + Google Pay | **Substantially built as of 2026-07-09** (PayNowButton.jsx, charge-invoice + paypal-order edge functions, admin invoice status badges) — still `VITE_SQUARE_ENV=sandbox`. Remaining before this can leave Deferred: fix Square config (see DEP-2 above) and do a full sandbox-to-production test pass. |
-                                                                                                                                                          
 
 ---
 
@@ -75,7 +86,7 @@ Secondary service: centralized vet record storage and tracking for pet owners, w
 ### Document Types
 
 | ID     | Priority | Title                                   | Notes                                                                                                      |
-|--------|----------|-----------------------------------------|------------------------------------------------------------------------------------------------------------|
+|--------|----------|--------------------------------------------|----------------------------------------------------------------------------------------------------------------|
 | DM-1   | P1       | USDA Health Certificates                | Form 7001; required for air travel; expire in 10 days — track issue date + expiration, alert before trips. The general document vault (migration 015) can store the file under `doc_type='other'`, but has no USDA-specific expiration/alert logic yet. |
 | DM-2   | P1       | Expiration dashboard                    | Single view of everything expiring soon (certs, vaccines, licenses, titer tests); killer feature for frequent flyers. `pet_documents.expires_on` + the migration 018 scheduled-jobs system give the data/infra pieces, but no unified dashboard UI has been confirmed built. |
 | DM-3   | P1       | Rabies Titer Tests                      | Required for intl destinations (Hawaii, UK, EU, Japan); track result date + destination applicability. Not a distinct `doc_type` yet (vault enum is vaccination/medical_record/insurance/microchip/other) — would need a schema tweak. |
