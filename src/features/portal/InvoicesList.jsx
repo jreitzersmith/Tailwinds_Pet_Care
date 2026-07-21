@@ -135,38 +135,40 @@ function LineItemsTable({ invoice, heading }) {
   return (
     <div style={styles.lineSection}>
       <p style={styles.lineSectionTitle}>{heading || 'Invoice Details'}</p>
-      <table style={styles.lineTable}>
-        <thead>
-          <tr>
-            <th style={{ ...styles.lineTh, textAlign: 'left' }}>Description</th>
-            <th style={{ ...styles.lineTh, textAlign: 'center' }}>Qty</th>
-            <th style={{ ...styles.lineTh, textAlign: 'right' }}>Unit</th>
-            <th style={{ ...styles.lineTh, textAlign: 'right' }}>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((li, i) => (
-            <tr key={i}>
-              <td style={styles.lineTd}>{li.description || li.service_name || '---'}</td>
-              <td style={{ ...styles.lineTd, textAlign: 'center' }}>{li.qty ?? 1}</td>
-              <td style={{ ...styles.lineTd, textAlign: 'right' }}>
-                {li.unit_price != null ? fmt(li.unit_price) : '---'}
-              </td>
-              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>
-                {li.is_quote ? 'Quote' : (li.total != null ? fmt(li.total) : '---')}
-              </td>
-            </tr>
-          ))}
-          {travelFee > 0 && (
+      <div style={styles.lineTableScroll}>
+        <table style={styles.lineTable}>
+          <thead>
             <tr>
-              <td style={styles.lineTd}>Travel Surcharge</td>
-              <td style={{ ...styles.lineTd, textAlign: 'center' }}>1</td>
-              <td style={{ ...styles.lineTd, textAlign: 'right' }}>{fmt(travelFee)}</td>
-              <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>{fmt(travelFee)}</td>
+              <th style={{ ...styles.lineTh, textAlign: 'left' }}>Description</th>
+              <th style={{ ...styles.lineTh, textAlign: 'center' }}>Qty</th>
+              <th style={{ ...styles.lineTh, textAlign: 'right' }}>Unit</th>
+              <th style={{ ...styles.lineTh, textAlign: 'right' }}>Amount</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((li, i) => (
+              <tr key={i}>
+                <td style={styles.lineTd}>{li.description || li.service_name || '---'}</td>
+                <td style={{ ...styles.lineTd, textAlign: 'center' }}>{li.qty ?? 1}</td>
+                <td style={{ ...styles.lineTd, textAlign: 'right' }}>
+                  {li.unit_price != null ? fmt(li.unit_price) : '---'}
+                </td>
+                <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>
+                  {li.is_quote ? 'Quote' : (li.total != null ? fmt(li.total) : '---')}
+                </td>
+              </tr>
+            ))}
+            {travelFee > 0 && (
+              <tr>
+                <td style={styles.lineTd}>Travel Surcharge</td>
+                <td style={{ ...styles.lineTd, textAlign: 'center' }}>1</td>
+                <td style={{ ...styles.lineTd, textAlign: 'right' }}>{fmt(travelFee)}</td>
+                <td style={{ ...styles.lineTd, textAlign: 'right', fontWeight: '600' }}>{fmt(travelFee)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
       <LineTotals invoice={invoice} />
     </div>
   );
@@ -441,6 +443,7 @@ const styles = {
     fontFamily: FONTS.body, fontSize: '0.72rem', color: COLORS.lightBlue,
     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem',
   },
+  lineTableScroll: { overflowX: 'auto' },
   lineTable: { width: '100%', borderCollapse: 'collapse', fontFamily: FONTS.body, fontSize: '0.84rem' },
   lineTh: {
     fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em',

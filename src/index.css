@@ -55,6 +55,9 @@ a {
   font-size: 1.6rem;
   cursor: pointer;
   line-height: 1;
+  padding: 0.5rem;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 @media (max-width: 700px) {
@@ -82,8 +85,15 @@ a {
 
   .nav-links li {
     width: 100%;
-    padding: 0.6rem 0;
+    padding: 0;
     border-bottom: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .nav-links li a,
+  .nav-links li button {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 0;
   }
 }
 
@@ -112,6 +122,42 @@ a {
 /* -- Contact ----------------------------------------------- */
 @media (max-width: 700px) {
   .contact-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Mobile breakpoints (2026-07-21) ─────────────────────────
+   Two tiers, chosen from the owner's own devices with headroom
+   for common phones/tablets in between:
+     phone:  max-width 480px  (Galaxy S23 Ultra portrait = 412px CSS width,
+             plus headroom up to 480px for other large phones)
+     tablet: max-width 834px  (iPad Pro 11" portrait = 834px CSS width
+             exactly, also covers most other tablets/phablets)
+   Rules below use whichever tier fits the affected element: content living
+   inside a max-width-capped container (e.g. the 760px portal page) only
+   needs the phone tier, since the container already caps width well under
+   834px. Elements positioned relative to the raw viewport (e.g. a fixed
+   overlay) need the tablet tier too, since nothing else constrains them. */
+
+/* -- Booking: tutorial overlay -------------------------------- */
+@media (max-width: 834px) {
+  .tutorial-panel,
+  .tutorial-minbtn {
+    right: auto !important;
+    left: 0.75rem !important;
+    bottom: 0.75rem !important;
+  }
+
+  .tutorial-panel {
+    width: calc(100vw - 1.5rem) !important;
+    max-width: 300px !important;
+  }
+}
+
+/* -- Portal: pet manager responsive grids ---------------------- */
+@media (max-width: 480px) {
+  .pm-expanded-wrap,
+  .pm-row3 {
     grid-template-columns: 1fr !important;
   }
 }

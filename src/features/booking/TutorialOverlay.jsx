@@ -22,21 +22,26 @@ const STEPS = [
 ];
 
 export default function TutorialOverlay({ currentStep, onDismiss }) {
-  const [minimized, setMinimized] = useState(false);
+  // Start minimized on phone-width screens so the panel never opens directly
+  // on top of a step's Continue/Confirm button (MR-1) — the user can still
+  // tap the chip to expand it. (The chip and panel also relocate to the
+  // bottom-left on tablet/phone widths via the .tutorial-panel/.tutorial-minbtn
+  // CSS rules, since every step's primary button is right-aligned.)
+  const [minimized, setMinimized] = useState(() => window.innerWidth <= 480);
 
   const step   = STEPS[Math.min(currentStep, STEPS.length - 1)];
   const isLast = currentStep >= STEPS.length - 1;
 
   if (minimized) {
     return (
-      <button style={s.minBtn} onClick={() => setMinimized(false)}>
+      <button style={s.minBtn} className='tutorial-minbtn' onClick={() => setMinimized(false)}>
         ? Tutorial
       </button>
     );
   }
 
   return (
-    <div style={s.panel}>
+    <div style={s.panel} className='tutorial-panel'>
       <div style={s.panelHeader}>
         <span style={s.panelTitle}>Tutorial</span>
         <div style={s.headerActions}>

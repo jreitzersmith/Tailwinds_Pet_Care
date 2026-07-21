@@ -142,3 +142,16 @@ Format: `| Date | ID | Description | Commit |`
 - Found and fixed stale `.git/*.lock(.bak)` files (from an earlier session's rename-instead-of-delete lock workaround) that were silently breaking `git fetch`/`git add`
 - Updated `Workflow.md`, `File_Editing_Rules.md`, this file, and `Backlog.md` to reflect the desktop-commander discovery and to catch up on unlogged shipped work
 - **Note:** none of the work in this changelog since 2026-07-04 was tracked as a GitHub Issue — the Workflow.md issue-based process (create issue → work → comment → close, `Closes Issue#N [GH#N]` in commit messages) has not actually been in use; Changelog.md has been the only record, and even it had fallen behind
+
+## 2026-07-21 — Mobile responsiveness WO-A (critical nav/booking blockers)
+
+Implements MR-1 through MR-8 from `WorkOrder_2026-07-21.md` / Issue#1 [GH#1]. New breakpoint system in `index.css`: phone tier `max-width: 480px` (Galaxy S23 Ultra portrait = 412px CSS width, plus headroom) and tablet tier `max-width: 834px` (iPad Pro 11" portrait = 834px CSS width exactly) — chosen from the owner's own devices per explicit request. Viewport-relative elements (fixed overlays) use the tablet tier; elements inside the 760px-capped portal container only need the phone tier, since the container already caps width below 834px.
+
+- `index.css`: `.nav-hamburger` gets a 44×44px min tap target; `.nav-links li a/button` become full-width/full-height block elements in the mobile menu instead of just the inline text (MR-5, MR-6). New `.tutorial-panel`/`.tutorial-minbtn` rules relocate the booking tutorial overlay to bottom-left on tablet/phone widths so it never sits on top of a step's right-aligned Continue/Confirm button (MR-1). New `.pm-expanded-wrap`/`.pm-row3` rules collapse PetManager's 2/3-column grids to 1 column at phone width (MR-4).
+- `TutorialOverlay.jsx`: added `tutorial-panel`/`tutorial-minbtn` classNames; now defaults to minimized on phone-width screens on mount so it never opens directly over a CTA (MR-1).
+- `ServiceStep.jsx`: `SlotGrid` checkboxes enlarged 15px → 22px with more cell padding — day/shift selection was nearly untappable on a phone (MR-2, partial MR-7; the table + horizontal-scroll structure itself is unchanged, a full stacked-accordion redesign is deferred as out of scope for a critical-fix pass).
+- `PortalPage.jsx`: tab bar (`styles.tabs`) scrolls horizontally instead of overflowing/wrapping when all 5 tabs don't fit a phone screen (MR-3).
+- `PetManager.jsx`: added `pm-expanded-wrap`/`pm-row3` classNames at the 4 usage sites (expanded pet card; allergy, vaccination, and walk-entry rows) (MR-4).
+- `InvoicesList.jsx`: `LineItemsTable` wrapped in a scrollable div (new `lineTableScroll` style) so a long invoice scrolls horizontally inside its card instead of breaking page layout (MR-8).
+- Build verified green (`npm run build`, 2.72s, no errors). `npx vitest run` reports no test files — pre-existing repo state (see Backlog CQ-3), not a regression from this change.
+- Manual mobile test still pending — see Backlog `MR-T1` / Issue#1 [GH#1]; testing checklist widget provided to the user for Galaxy S23 Ultra and iPad Pro 11" viewport widths.

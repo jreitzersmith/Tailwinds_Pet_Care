@@ -106,11 +106,15 @@ const styles = {
   },
   tabs: {
     display: 'flex', borderBottom: '2px solid ' + COLORS.lightBlue, marginBottom: '1.5rem',
+    // Scrolls horizontally instead of overflowing/wrapping when all 5 tabs don't
+    // fit a phone-width screen (MR-3) — a no-op on wider screens where they fit.
+    overflowX: 'auto', WebkitOverflowScrolling: 'touch',
   },
   tab: {
     padding: '0.65rem 1.25rem', background: 'none', border: 'none',
     fontFamily: FONTS.body, fontSize: '0.95rem', color: COLORS.lightBlue,
     cursor: 'pointer', borderBottom: '3px solid transparent', marginBottom: '-2px',
+    whiteSpace: 'nowrap', flexShrink: 0,
   },
   tabActive: { color: COLORS.blue, borderBottomColor: COLORS.blue, fontWeight: '600' },
   content: {},

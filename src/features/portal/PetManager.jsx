@@ -321,7 +321,7 @@ function PetCard({ pet, onEdit, onDelete, userId, onSelectTab, onChanged, allPet
 
       {/* Expanded: photos + visits + documents + weight */}
       {expanded && (
-        <div style={st.expandedWrap}>
+        <div style={st.expandedWrap} className='pm-expanded-wrap'>
           <PhotoAlbumShell petId={pet.id} />
           <PastVisits petId={pet.id} onSelectTab={onSelectTab} />
           <div style={st.fullWidth}>
@@ -830,7 +830,7 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
             <div>
               {form.allergies.map((a, i) => (
                 <div key={i} style={st.listItem}>
-                  <div style={st.row3}>
+                  <div style={st.row3} className='pm-row3'>
                     <label style={st.label}>Allergen
                       <input style={st.input} type='text' value={a.allergen}
                         onChange={e => setAllergy(i, 'allergen', e.target.value)} placeholder='Chicken, bee stings…' />
@@ -973,7 +973,7 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
               {vaccAIProcessing[i] && (
                 <p style={st.aiProcessingMsg}>🤖 Extracting details from record…</p>
               )}
-              <div style={st.row3}>
+              <div style={st.row3} className='pm-row3'>
                 <label style={st.label}>Vaccine
                   <input style={st.input} type='text' value={v.vaccine}
                     onChange={e => setVacc(i, 'vaccine', e.target.value)} placeholder='Rabies' />
@@ -1086,7 +1086,7 @@ DietEntry.propTypes = {
 function WalkEntry({ entry, index, onChange, onRemove, onToggleDay }) {
   return (
     <div style={st.listItem}>
-      <div style={st.row3}>
+      <div style={st.row3} className='pm-row3'>
         <label style={st.label}>Walk Label
           <input style={st.input} type='text' value={entry.label}
             onChange={e => onChange(index, 'label', e.target.value)}

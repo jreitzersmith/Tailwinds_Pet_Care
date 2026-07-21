@@ -50,11 +50,11 @@ Delete a row when its work order is committed. Append new items at the bottom of
 
 **GitHub Issue:** [#1](https://github.com/jreitzersmith/Tailwinds_Pet_Care/issues/1) — full findings in `Claude_Prompts/WorkOrder_2026-07-21.md`. Codebase has exactly one CSS breakpoint sitewide (700px, index.css); nearly everything else is inline styles with no responsive treatment.
 
-| ID   | Priority | Title                                                  | Notes                                                                                                    |
-|------|----------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| MR-A | P1       | WO-A — Critical nav/booking mobile blockers (MR-1–MR-8)  | TutorialOverlay covers Continue/Confirm buttons; ServiceStep checkboxes ~15px; PortalPage tab bar overflows; PetManager grids unusable at phone widths; Nav hamburger/link tap targets; InvoicesList table no overflow wrapper |
-| MR-B | P2       | WO-B — Portal & forms mobile fixes (MR-9, 10, 16, 17, 19, 21, 22, 23) | AboutPage/ContactPage grids, PetStep/AccountSettings/GuidedSetup layout, auth OAuth button sizing            |
-| MR-C | P3       | WO-C — Polish + admin mobile fixes (MR-11–15, 18, 20, 24–27) | Map/logo sizing, tap-target padding across Footer/ServiceCard/PayNowButton/PetManager day buttons, admin table/grid scroll wrappers |
+| ID    | Priority | Title                                                  | Notes                                                                                                    |
+|-------|----------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| MR-T1 | P1       | Manual mobile test — WO-A fixes (MR-1–MR-8)            | Implemented + committed 2026-07-21 (build green, no regression). Verify on Galaxy S23 Ultra (412px) + iPad Pro 11" (834px) widths using the testing-checklist widget: nav hamburger/link tap targets, booking tutorial overlay position (all 4 steps), ServiceStep day/shift checkboxes, portal tab-bar scroll, PetManager expanded-card + allergy/vaccination/walk grids, invoice line-items table scroll. Close Issue#1 [GH#1] once confirmed passing. |
+| MR-B  | P2       | WO-B — Portal & forms mobile fixes (MR-9, 10, 16, 17, 19, 21, 22, 23) | AboutPage/ContactPage grids, PetStep/AccountSettings/GuidedSetup layout, auth OAuth button sizing            |
+| MR-C  | P3       | WO-C — Polish + admin mobile fixes (MR-11–15, 18, 20, 24–27) | Map/logo sizing, tap-target padding across Footer/ServiceCard/PayNowButton/PetManager day buttons, admin table/grid scroll wrappers |
 
 ---
 
