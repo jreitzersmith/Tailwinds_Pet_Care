@@ -157,7 +157,8 @@ a {
 /* -- Portal: pet manager responsive grids ---------------------- */
 @media (max-width: 480px) {
   .pm-expanded-wrap,
-  .pm-row3 {
+  .pm-row3,
+  .pm-form-grid {
     grid-template-columns: 1fr !important;
   }
 }

@@ -782,7 +782,7 @@ function PetForm({ initial, onSave, onCancel, saving, error, isNew, petId, userI
       )}
 
       {/* Basic required fields */}
-      <div style={st.formGrid}>
+      <div style={st.formGrid} className='pm-form-grid'>
         <label style={st.label}>Name *
           <input style={st.input} type='text' value={form.name} onChange={e => set('name', e.target.value)} />
         </label>
@@ -1263,8 +1263,11 @@ const st = {
     cursor: 'pointer', fontFamily: FONTS.body, fontSize: '0.85rem',
   },
   formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.75rem' },
-  label:    { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black },
-  input:    { padding: '0.5rem 0.7rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none', fontFamily: FONTS.body },
+  // minWidth: 0 overrides the browser default (min-width: auto) that grid/flex items get —
+  // without it, a <select>/<input> refuses to shrink below its content's intrinsic width and
+  // overflows a narrow grid column on phone screens instead of wrapping/scrolling inside it.
+  label:    { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, minWidth: 0 },
+  input:    { padding: '0.5rem 0.7rem', borderRadius: '6px', border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.9rem', outline: 'none', fontFamily: FONTS.body, width: '100%', minWidth: 0, boxSizing: 'border-box' },
   formActions: { display: 'flex', gap: '0.75rem', marginTop: '1rem' },
   saveBtn: { padding: '0.5rem 1.5rem', background: COLORS.blue, color: COLORS.white, border: 'none', borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body },
   cancelBtn: { padding: '0.5rem 1rem', background: COLORS.white, color: COLORS.lightBlue, border: `1px solid ${COLORS.lightBlue}`, borderRadius: '7px', cursor: 'pointer', fontFamily: FONTS.body },
