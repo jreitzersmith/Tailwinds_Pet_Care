@@ -9,7 +9,7 @@ import GuidedSetup from './GuidedSetup.jsx';
 import PetManager from './PetManager.jsx';
 import InvoicesList from './InvoicesList.jsx';
 
-const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Invoices', 'Account'];
+const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Invoices', 'My Info'];
 
 // Maps the ?tab= query param value to a tab index
 function resolveInitialTab(searchParams) {

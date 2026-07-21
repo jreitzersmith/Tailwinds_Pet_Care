@@ -150,7 +150,7 @@ export default function AccountSettings() {
       <section style={s.section}>
         <h2 style={s.sectionHead}>Contact Information</h2>
         <p style={s.hint}>Your phone number and airline — helps us reach you during your trips.</p>
-        <div style={s.grid}>
+        <div style={s.grid} className='acct-grid'>
           <label style={s.label}>Phone Number
             <input
               style={s.input}
@@ -198,7 +198,7 @@ export default function AccountSettings() {
       <section style={s.section}>
         <h2 style={s.sectionHead}>Preferred Veterinarian</h2>
         <p style={s.hint}>Optional — we&apos;ll contact your vet if there&apos;s a medical concern during a visit.</p>
-        <div style={s.grid}>
+        <div style={s.grid} className='acct-grid'>
           {[
             { field: 'preferred_vet_name',    label: 'Vet Name',    placeholder: 'Dr. Smith' },
             { field: 'preferred_vet_clinic',  label: 'Clinic Name', placeholder: 'Dallas Animal Clinic' },
@@ -223,7 +223,7 @@ export default function AccountSettings() {
           Optional — where your sitter should go if your preferred vet is unreachable and your pet
           needs urgent care while you&apos;re unreachable mid-flight.
         </p>
-        <div style={s.grid}>
+        <div style={s.grid} className='acct-grid'>
           {[
             { field: 'emergency_vet_name',    label: 'Vet / Clinic Name', placeholder: 'DFW Emergency Pet Clinic' },
             { field: 'emergency_vet_clinic',  label: 'Clinic Name',       placeholder: '24-Hour Animal Hospital' },
@@ -248,7 +248,7 @@ export default function AccountSettings() {
           A backup person we can reach if we can&apos;t get ahold of you — a family member,
           neighbor, or friend.
         </p>
-        <div style={s.grid}>
+        <div style={s.grid} className='acct-grid'>
           <label style={s.label}>Name
             <input style={s.input} type='text'
               value={profile.emergency_contact_name}
@@ -302,18 +302,22 @@ const s = {
   label: {
     display: 'flex', flexDirection: 'column', gap: '0.3rem',
     fontFamily: FONTS.body, fontSize: '0.875rem', color: COLORS.black, marginBottom: '0.5rem',
+    minWidth: 0,
   },
   input: {
     padding: '0.55rem 0.75rem', borderRadius: '6px',
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
-    outline: 'none', fontFamily: FONTS.body,
+    outline: 'none', fontFamily: FONTS.body, width: '100%', minWidth: 0, boxSizing: 'border-box',
   },
   select: {
     padding: '0.55rem 0.75rem', borderRadius: '6px',
     border: `1px solid ${COLORS.lightBlue}`, fontSize: '0.95rem',
     outline: 'none', fontFamily: FONTS.body, background: COLORS.white,
-    color: COLORS.black, cursor: 'pointer',
+    color: COLORS.black, cursor: 'pointer', width: '100%', minWidth: 0, boxSizing: 'border-box',
   },
+  // minWidth: 0 above overrides the browser default (min-width: auto) that grid/flex items get —
+  // without it, a <select>/<input> refuses to shrink below its content's intrinsic width and
+  // overflows a narrow grid column on phone screens instead of scrolling/wrapping inside it.
   grid:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 1rem' },
   errMsg: { fontFamily: FONTS.body, color: COLORS.red, marginBottom: '0.75rem' },
   okMsg:  { fontFamily: FONTS.body, color: '#2a7a3b', marginBottom: '0.75rem' },

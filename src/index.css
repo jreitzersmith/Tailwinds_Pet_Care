@@ -154,11 +154,12 @@ a {
   }
 }
 
-/* -- Portal: pet manager responsive grids ---------------------- */
+/* -- Portal: responsive grids (pet manager + account settings) - */
 @media (max-width: 480px) {
   .pm-expanded-wrap,
   .pm-row3,
-  .pm-form-grid {
+  .pm-form-grid,
+  .acct-grid {
     grid-template-columns: 1fr !important;
   }
 }
