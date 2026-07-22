@@ -386,7 +386,8 @@ function PastVisits({ petId, onSelectTab }) {
   function goToBooking(bookingDate) {
     if (!onSelectTab) return;
     const isPast = new Date(bookingDate) < new Date();
-    onSelectTab(isPast ? 1 : 0);
+    // Indices match PortalPage's TABS order: 0 My Info, 1 My Pets, 2 Upcoming, 3 Past Bookings, 4 Invoices
+    onSelectTab(isPast ? 3 : 2);
   }
 
   return (

@@ -9,7 +9,7 @@ import GuidedSetup from './GuidedSetup.jsx';
 import PetManager from './PetManager.jsx';
 import InvoicesList from './InvoicesList.jsx';
 
-const TABS = ['Upcoming', 'Past Bookings', 'My Pets', 'Invoices', 'My Info'];
+const TABS = ['My Info', 'My Pets', 'Upcoming', 'Past Bookings', 'Invoices'];
 
 // Maps the ?tab= query param value to a tab index
 function resolveInitialTab(searchParams) {
@@ -69,11 +69,11 @@ export default function PortalPage() {
       </div>
 
       <div style={styles.content}>
-        {tab === 0 && <BookingsList filter='upcoming' />}
-        {tab === 1 && <BookingsList filter='past' />}
-        {tab === 2 && <PetManager onSelectTab={setTab} />}
-        {tab === 3 && <InvoicesList focusInvoiceId={focusInvoiceId} />}
-        {tab === 4 && <AccountSettings />}
+        {tab === 0 && <AccountSettings />}
+        {tab === 1 && <PetManager onSelectTab={setTab} />}
+        {tab === 2 && <BookingsList filter='upcoming' />}
+        {tab === 3 && <BookingsList filter='past' />}
+        {tab === 4 && <InvoicesList focusInvoiceId={focusInvoiceId} />}
       </div>
     </div>
   );
